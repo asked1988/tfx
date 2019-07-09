@@ -26,11 +26,12 @@ import tensorflow as tf
 from tfx.tools.cli.cmd.pipeline import pipeline_group
 
 
-class PipelineTest(tf.test.TestCase):
+class PipelineAirflowTest(tf.test.TestCase):
 
   def setUp(self):
     # Change the encoding for Click since Python 3 is configured to use ASCII as
     # encoding for the environment.
+    super(PipelineAirflowTest, self).setUp()
     if codecs.lookup(locale.getpreferredencoding()).name == 'ascii':
       os.environ['LANG'] = 'en_US.utf-8'
     self.runner = CliRunner()
@@ -39,15 +40,8 @@ class PipelineTest(tf.test.TestCase):
   def test_pipeline_create_auto(self):
     result = self.runner.invoke(pipeline_group,
                                 ['create', '--path', 'chicago.py'])
-    self.assertNotEqual(0, result.exit_code)
-    self.assertIn('Creating pipeline', result.output)
-
-  def test_pipeline_update(self):
-    result = self.runner.invoke(
-        pipeline_group,
-        ['update', '--path', 'chicago.py', '--engine', 'kubeflow'])
     self.assertEqual(0, result.exit_code)
-    self.assertIn('Updating pipeline', result.output)
+    self.assertIn('Creating pipeline', result.output)
 
   def test_pipeline_run(self):
     result = self.runner.invoke(
