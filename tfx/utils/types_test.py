@@ -18,109 +18,95 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import json
-
 # Standard Imports
 
 import mock
 import tensorflow as tf
 from tensorflow.python.platform import tf_logging  # pylint:disable=g-direct-tensorflow-import
+from tensorflow.python.util import deprecation  # pylint: disable=g-direct-tensorflow-import
+from tfx.types import artifact
 from tfx.utils import types
 
 
 class TypesTest(tf.test.TestCase):
 
-  def test_tfx_type(self):
-    instance = types.TfxArtifact('MyTypeName', split='eval')
-
-    # Test property getters.
-    self.assertEqual('', instance.uri)
-    self.assertEqual(0, instance.id)
-    self.assertEqual(0, instance.type_id)
-    self.assertEqual('MyTypeName', instance.type_name)
-    self.assertEqual('', instance.state)
-    self.assertEqual('eval', instance.split)
-    self.assertEqual(0, instance.span)
-
-    # Test property setters.
-    instance.uri = '/tmp/uri2'
-    self.assertEqual('/tmp/uri2', instance.uri)
-
-    instance.id = 1
-    self.assertEqual(1, instance.id)
-
-    instance.type_id = 2
-    self.assertEqual(2, instance.type_id)
-
-    instance.state = types.ARTIFACT_STATE_DELETED
-    self.assertEqual(types.ARTIFACT_STATE_DELETED, instance.state)
-
-    instance.split = ''
-    self.assertEqual('', instance.split)
-
-    instance.span = 20190101
-    self.assertEqual(20190101, instance.span)
-
-    instance.set_int_custom_property('int_key', 20)
-    self.assertEqual(20,
-                     instance.artifact.custom_properties['int_key'].int_value)
-
-    instance.set_string_custom_property('string_key', 'string_value')
-    self.assertEqual(
-        'string_value',
-        instance.artifact.custom_properties['string_key'].string_value)
-
-    self.assertEqual('MyTypeName:/tmp/uri2.1', str(instance))
-
-    # Test json serialization.
-    json_dict = instance.json_dict()
-    s = json.dumps(json_dict)
-    other_instance = types.TfxArtifact.parse_from_json_dict(json.loads(s))
-    self.assertEqual(instance.artifact, other_instance.artifact)
-    self.assertEqual(instance.artifact_type, other_instance.artifact_type)
-
-  def test_get_from_single_list(self):
-    """Test various retrieval utilities on a single list of TfxArtifact."""
-    single_list = [types.TfxArtifact('MyTypeName', split='eval')]
-    single_list[0].uri = '/tmp/evaluri'
-    self.assertEqual(single_list[0], types.get_single_instance(single_list))
-    self.assertEqual('/tmp/evaluri', types.get_single_uri(single_list))
-    self.assertEqual(single_list[0],
-                     types._get_split_instance(single_list, 'eval'))
-    self.assertEqual('/tmp/evaluri', types.get_split_uri(single_list, 'eval'))
-    with self.assertRaises(ValueError):
-      types._get_split_instance(single_list, 'train')
-    with self.assertRaises(ValueError):
-      types.get_split_uri(single_list, 'train')
-
-  def test_get_from_split_list(self):
-    """Test various retrieval utilities on a list of split TfxArtifacts."""
-    split_list = []
-    for split in ['train', 'eval']:
-      instance = types.TfxArtifact('MyTypeName', split=split)
-      instance.uri = '/tmp/' + split
-      split_list.append(instance)
-
-    with self.assertRaises(ValueError):
-      types.get_single_instance(split_list)
-
-    with self.assertRaises(ValueError):
-      types.get_single_uri(split_list)
-
-    self.assertEqual(split_list[0],
-                     types._get_split_instance(split_list, 'train'))
-    self.assertEqual('/tmp/train', types.get_split_uri(split_list, 'train'))
-    self.assertEqual(split_list[1], types._get_split_instance(
-        split_list, 'eval'))
-    self.assertEqual('/tmp/eval', types.get_split_uri(split_list, 'eval'))
-
-  def test_tfxtype_deprecated(self):
+  def testTfxtypeDeprecated(self):
+    print(deprecation._PRINTED_WARNING)
     with mock.patch.object(tf_logging, 'warning'):
       warn_mock = mock.MagicMock()
       tf_logging.warning = warn_mock
       types.TfxType('FakeType')
       warn_mock.assert_called_once()
-      self.assertIn('TfxType has been renamed to TfxArtifact',
+      self.assertIn(
+          'tfx.utils.types.TfxType has been renamed to tfx.types.Artifact',
+          warn_mock.call_args[0][5])
+    # Reset deprecation message sentinel.
+    print(deprecation._PRINTED_WARNING)
+    del deprecation._PRINTED_WARNING[artifact.Artifact]
+
+  def testTfxartifactDeprecated(self):
+    print(deprecation._PRINTED_WARNING)
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      types.TfxArtifact('FakeType')
+      warn_mock.assert_called_once()
+      self.assertIn(
+          'tfx.utils.types.TfxArtifact has been renamed to tfx.types.Artifact',
+          warn_mock.call_args[0][5])
+    # Reset deprecation message sentinel.
+    print(deprecation._PRINTED_WARNING)
+    del deprecation._PRINTED_WARNING[artifact.Artifact]
+
+  def testParseTfxTypeDictDeprecated(self):
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      self.assertEqual({}, types.parse_tfx_type_dict('{}'))
+      warn_mock.assert_called_once()
+      self.assertIn('tfx.utils.types.parse_tfx_type_dict has been renamed to',
+                    warn_mock.call_args[0][5])
+
+  def testJsonifyTfxTypeDictDeprecated(self):
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      self.assertEqual('{}', types.jsonify_tfx_type_dict({}))
+      warn_mock.assert_called_once()
+      self.assertIn('tfx.utils.types.jsonify_tfx_type_dict has been renamed to',
+                    warn_mock.call_args[0][5])
+
+  def testGetSingleInstanceDeprecated(self):
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      my_artifact = artifact.Artifact('TestType')
+      self.assertIs(my_artifact, types.get_single_instance([my_artifact]))
+      warn_mock.assert_called_once()
+      self.assertIn('tfx.utils.types.get_single_instance has been renamed to',
+                    warn_mock.call_args[0][5])
+
+  def testGetSingleUriDeprecated(self):
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      my_artifact = artifact.Artifact('TestType')
+      my_artifact.uri = '123'
+      self.assertEqual('123', types.get_single_uri([my_artifact]))
+      warn_mock.assert_called_once()
+      self.assertIn('tfx.utils.types.get_single_uri has been renamed to',
+                    warn_mock.call_args[0][5])
+
+  def testGetSplitUriDeprecated(self):
+    with mock.patch.object(tf_logging, 'warning'):
+      warn_mock = mock.MagicMock()
+      tf_logging.warning = warn_mock
+      my_artifact = artifact.Artifact('TestType')
+      my_artifact.uri = '123'
+      my_artifact.split = 'train'
+      self.assertEqual('123', types.get_split_uri([my_artifact], 'train'))
+      warn_mock.assert_called_once()
+      self.assertIn('tfx.utils.types.get_split_uri has been renamed to',
                     warn_mock.call_args[0][5])
 
 

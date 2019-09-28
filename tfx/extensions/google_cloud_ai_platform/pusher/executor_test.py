@@ -23,7 +23,7 @@ import mock
 import tensorflow as tf
 
 from tfx.extensions.google_cloud_ai_platform.pusher.executor import Executor
-from tfx.utils import types
+from tfx.types import standard_artifacts
 
 
 class ExecutorTest(tf.test.TestCase):
@@ -36,19 +36,19 @@ class ExecutorTest(tf.test.TestCase):
     self._output_data_dir = os.path.join(
         os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', self.get_temp_dir()),
         self._testMethodName)
-    tf.gfile.MakeDirs(self._output_data_dir)
-    self._model_export = types.TfxArtifact(type_name='ModelExportPath')
+    tf.io.gfile.makedirs(self._output_data_dir)
+    self._model_export = standard_artifacts.Model()
     self._model_export.uri = os.path.join(self._source_data_dir,
                                           'trainer/current/')
-    self._model_blessing = types.TfxArtifact(type_name='ModelBlessingPath')
+    self._model_blessing = standard_artifacts.ModelBlessing()
     self._input_dict = {
         'model_export': [self._model_export],
         'model_blessing': [self._model_blessing],
     }
 
-    self._model_push = types.TfxArtifact(type_name='ModelPushPath')
+    self._model_push = standard_artifacts.PushedModel()
     self._model_push.uri = os.path.join(self._output_data_dir, 'model_push')
-    tf.gfile.MakeDirs(self._model_push.uri)
+    tf.io.gfile.makedirs(self._model_push.uri)
     self._output_dict = {
         'model_push': [self._model_push],
     }
@@ -59,6 +59,7 @@ class ExecutorTest(tf.test.TestCase):
                 'project_id': 'project_id'
             },
         },
+        'push_destination': None,
     }
     self._executor = Executor()
 

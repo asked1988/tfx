@@ -19,20 +19,20 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tfx.components.trainer import driver
-from tfx.utils import types
+from tfx.types import standard_artifacts
 
 
 class DriverTest(tf.test.TestCase):
 
-  def test_fetch_warm_starting_model(self):
+  def testFetchWarmStartingModel(self):
     mock_metadata = tf.test.mock.Mock()
     artifacts = []
-    for span in [3, 2, 1]:
-      model = types.TfxArtifact(type_name='ModelExportPath')
-      model.span = span
-      model.uri = 'uri-%d' % span
+    for aid in [3, 2, 1]:
+      model = standard_artifacts.Model()
+      model.id = aid
+      model.uri = 'uri-%d' % aid
       artifacts.append(model.artifact)
-    mock_metadata.get_all_artifacts.return_value = artifacts
+    mock_metadata.get_artifacts_by_type.return_value = artifacts
     trainer_driver = driver.Driver(mock_metadata)
     result = trainer_driver._fetch_latest_model()
     self.assertEqual('uri-3', result)

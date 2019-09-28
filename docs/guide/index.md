@@ -37,6 +37,63 @@ for specific data). Pipeline components are built upon TFX libraries.
 The result of a pipeline is a TFX deployment target and/or service of an
 inference request.
 
+### Artifacts
+
+In a pipeline, an **artifact** is a unit of data that is passed between
+components. Generally, components have at least one input artifact and one
+output artifact. All artifacts must have associated **metadata**, which defines
+the **type** and **properties** of the artifact. Artifacts must be strongly
+typed with an artifact type registered in the
+[ML Metadata](https://www.tensorflow.org/tfx/guide/mlmd) store. The concepts of
+**artifact** and **artifact type** originate from the data model that
+[ML Metadata](https://github.com/google/ml-metadata) defines, as described in
+[this document](https://github.com/google/ml-metadata/blob/master/g3doc/get_started.md#concepts).
+TFX defines and implements its own artifact type ontology to realize its
+higher-level functionality. As of TFX 0.14,
+[10 known artifact types](https://github.com/tensorflow/tfx/blob/1e931c461ed38de51ae3e9975fd10a0cba75e58b/tfx/types/standard_artifacts.py)
+are defined and used throught the TFX system.
+
+An **artifact type** has a unique name and a schema of properties of its
+instances. TFX utilizes artifact type as how the artifact is used by components
+in the pipeline, but not necessarily to determine what the artifact content
+physically is on a filesystem.
+
+For instance, the *Example* artifact type may represent Examples materialized in
+TFRecord of `tensorflow::Example` protocol buffer, CSV, JSON, or any other
+physical format. Regardless, the way Examples are used in a pipeline is exactly
+the same: being analyzed to generate statistics, being validated against
+expected schema, being pre-processed in advance to training, and being supplied
+to a Trainer to training models, and so forth. Likewise, the *Model* artifact
+type may represent trained model objects exported in various physical formats
+such as TensorFlow SavedModel, ONNX, PMML or PKL (of various types of model
+objects in Python). In any case, models are always to be evaluated, analyzed and
+deployed for serving in pipelines.
+
+NOTE: As of TFX 0.14, *Examples* artifact is assumed to be `tensorflow::Example`
+protocol buffer in gzip-compressed TFRecord format. *Model* artifact is assumed
+to be TensorFlow SavedModel. Future versions of TFX may expand those artifact
+types to support more variants.
+
+In order to differentiate such possible variants of the same **artifact type**,
+the ML Metadata defines a set of **artifact properties**. For instance, one such
+**artifact property** for an *Examples* artifact may be *format*, whose values
+may be one of `TFRecord`, `JSON`, `CSV`, and so forth. Artifacts of type
+*Examples* can always be passed to a component that is designed to take Examples
+as an input artifact (for example, a Trainer). However, the actual
+implementation of the consuming component may adjust its behavior in response to
+a particular value of the *format* property, or simply raise a runtime error if
+it doesn’t have implementation to process the particular format of the Examples.
+
+In summary, **artifact type**s define the ontology of **artifact**s in the
+entire TFX pipeline system, whereas **artifact properties** define the ontology
+specific to an **artifact type**. Users of the pipeline system can choose to
+extend such ontology locally to their pipeline applications, by defining and
+populating new custom properties. Users can also choose to extend the ontology
+globally for the system as a whole, by introducing new artifact types, and/or
+modifying predefined type-properties, in which case such extension would be
+contributed back to the master repository of the pipeline system (the TFX
+repository).
+
 ## TFX Pipeline Components
 
 A TFX pipeline is a sequence of components that implement an [ML
@@ -181,36 +238,37 @@ Flink, Google Cloud Dataflow, and others.
 Orchestrators such as Apache Airflow and Kubeflow make configuring, operating,
 monitoring, and maintaining an ML pipeline easier.
 
-*   [**Apache Airflow**](orchestra.md) is a platform to programmatically author,
-schedule and monitor workflows.  TFX uses Airflow to author workflows as
-directed acyclic graphs (DAGs) of tasks. The Airflow scheduler executes tasks on
-an array of workers while following the specified dependencies. Rich command
-line utilities make performing complex surgeries on DAGs a snap. The rich user
-interface makes it easy to visualize pipelines running in production, monitor
-progress, and troubleshoot issues when needed.  When workflows are defined as
-code, they become more maintainable, versionable, testable, and collaborative.
+*   [**Apache Airflow**](https://airflow.apache.org/) is a platform to
+    programmatically author, schedule and monitor workflows. TFX uses Airflow to
+    author workflows as directed acyclic graphs (DAGs) of tasks. The Airflow
+    scheduler executes tasks on an array of workers while following the
+    specified dependencies. Rich command line utilities make performing complex
+    surgeries on DAGs a snap. The rich user interface makes it easy to visualize
+    pipelines running in production, monitor progress, and troubleshoot issues
+    when needed. When workflows are defined as code, they become more
+    maintainable, versionable, testable, and collaborative.
 
-* [**Kubeflow**](https://www.kubeflow.org/) is dedicated to making deployments
-of machine learning (ML) workflows on Kubernetes simple, portable and scalable.
-Kubeflow's goal is not to recreate other services, but to provide a
-straightforward way to deploy best-of-breed open-source systems for ML to
-diverse infrastructures.
-[Kubeflow Pipelines](https://www.kubeflow.org/docs/pipelines/pipelines-overview/)
-enable composition and execution of reproducible workflows on Kubeflow,
-integrated with experimentation and notebook based experiences.
-Kubeflow Pipelines services on Kubernetes include the hosted Metadata store,
-container based orchestration engine, notebook server, and UI to help users
-develop, run, and manage complex ML pipelines at scale.
-The Kubeflow Pipelines SDK allows for creation and sharing of components
-and composition of pipelines programmatically.
-
+*   [**Kubeflow**](https://www.kubeflow.org/) is dedicated to making deployments
+    of machine learning (ML) workflows on Kubernetes simple, portable and
+    scalable. Kubeflow's goal is not to recreate other services, but to provide
+    a straightforward way to deploy best-of-breed open-source systems for ML to
+    diverse infrastructures.
+    [Kubeflow Pipelines](https://www.kubeflow.org/docs/pipelines/pipelines-overview/)
+    enable composition and execution of reproducible workflows on Kubeflow,
+    integrated with experimentation and notebook based experiences. Kubeflow
+    Pipelines services on Kubernetes include the hosted Metadata store,
+    container based orchestration engine, notebook server, and UI to help users
+    develop, run, and manage complex ML pipelines at scale. The Kubeflow
+    Pipelines SDK allows for creation and sharing of components and composition
+    of pipelines programmatically.
 
 ### Orchestration and Portability
 
-TFX is designed to be highly portable to multiple environments and
-orchestration frameworks, including Apache Airflow and Kubeflow.  It is also
-portable to different computing platforms, including bare-metal and the
-Google Cloud Platform (GCP).
+TFX is designed to be portable to multiple environments and orchestration
+frameworks, including [Apache Airflow](airflow.md),
+[Apache Beam](beam_orchestrator.md) and [Kubeflow](kubeflow.md) . It is also
+portable to different computing platforms, including bare-metal and the Google
+Cloud Platform (GCP).
 
 Note: The current revision of this user guide primarily discusses deployment
 on a bare-metal system using Apache Airflow for orchestration.
@@ -232,7 +290,7 @@ computed. The two senses may be used interchangeably based on context.
 #### SavedModel
 
 * **What is a [SavedModel](
-https://www.tensorflow.org/api_docs/python/tf/saved_model)**: a universal,
+https://www.tensorflow.org/versions/r1.15/api_docs/python/tf/saved_model)**: a universal,
 language-neutral, hermetic, recoverable serialization of a TensorFlow model.
 * **Why is it important**: It enables higher-level systems to produce,
 transform, and consume TensorFlow models using a single abstraction.
@@ -466,9 +524,9 @@ to any or all of these deployment targets.
 [TensorFlow Serving (TFS)](serving.md) is a flexible, high-performance serving
 system for machine learning models, designed for production environments. It
 consumes a SavedModel and will accept inference requests over either REST or
-gRPC interfaces.  It runs as a set of processes on one more more network
-servers, using one of several advanced architectures to handle synchronization
-and distributed computation.  See the [TFS documentation](serving.md) for more
+gRPC interfaces. It runs as a set of processes on one or more network servers,
+using one of several advanced architectures to handle synchronization and
+distributed computation. See the [TFS documentation](serving.md) for more
 information on developing and deploying TFS solutions.
 
 In a typical pipeline a [Pusher](pusher.md) component will consume SavedModels which
@@ -528,32 +586,32 @@ def create_pipeline():
   """Implements the example pipeline with TFX."""
   examples = csv_input(os.path.join(base_dir, 'no_split/span_1'))
   example_gen = CsvExampleGen(input_data=examples)
-  statistics_gen = StatisticsGen(input_data=example_gen.outputs.output)
-  infer_schema = SchemaGen(stats=statistics_gen.outputs.output)
+  statistics_gen = StatisticsGen(input_data=example_gen.outputs['output'])
+  infer_schema = SchemaGen(stats=statistics_gen.outputs['output'])
   validate_stats = ExampleValidator(  # pylint: disable=unused-variable
-      stats=statistics_gen.outputs.output,
-      schema=infer_schema.outputs.output)
+      stats=statistics_gen.outputs['output'],
+      schema=infer_schema.outputs['output'])
   transform = Transform(
-      input_data=example_gen.outputs.output,
-      schema=infer_schema.outputs.output,
+      input_data=example_gen.outputs['output'],
+      schema=infer_schema.outputs['output'],
       module_file=transforms)
   trainer = Trainer(
       module_file=model,
-      transformed_examples=transform.outputs.transformed_examples,
-      schema=infer_schema.outputs.output,
-      transform_output=transform.outputs.transform_output,
+      transformed_examples=transform.outputs['transformed_examples'],
+      schema=infer_schema.outputs['output'],
+      transform_output=transform.outputs['transform_output'],
       train_steps=10000,
       eval_steps=5000,
       warm_starting=True)
   model_analyzer = Evaluator(
-      examples=example_gen.outputs.output,
-      model_exports=trainer.outputs.output)
+      examples=example_gen.outputs['output'],
+      model_exports=trainer.outputs['output'])
   model_validator = ModelValidator(
-      examples=example_gen.outputs.output,
-      model=trainer.outputs.output)
+      examples=example_gen.outputs['output'],
+      model=trainer.outputs['output'])
   pusher = Pusher(
-      model_export=trainer.outputs.output,
-      model_blessing=model_validator.outputs.blessing,
+      model_export=trainer.outputs['output'],
+      model_blessing=model_validator.outputs['blessing'],
       serving_model_dir=serving_model_dir)
 
   return [
@@ -715,17 +773,15 @@ Try restarting the webserver and scheduler.
 
 ### Setup
 
-Kubeflow requires a Kubernetes cluster to run the pipelines at scale.
-See the Kubeflow deployment guideline that guide through the options for
-[deplopying the Kubeflow cluster.] (https://www.kubeflow.org/docs/started/getting-started-gke/)
+Kubeflow requires a Kubernetes cluster to run the pipelines at scale. See the
+Kubeflow deployment guideline that guide through the options for
+[deplopying the Kubeflow cluster.](https://www.kubeflow.org/docs/started/getting-started-gke/)
 
 ### Configure and run TFX pipeline
 
-Please follow the Kubeflow Pipelines [instructions](https://github.com/kubeflow/pipelines/tree/master/samples/tfx-oss)
-to run the TFX example pipeline on Kubeflow.
-TFX components have been containerized to compose the Kubeflow pipeline and
-the sample illustrates the ability to configure the pipeline to read large 
-public dataset and execute training and data processing steps at scale in the cloud.
-
-
-
+Please follow the Kubeflow Pipelines
+[instructions](https://github.com/kubeflow/pipelines/tree/master/samples/core/tfx-oss)
+to run the TFX example pipeline on Kubeflow. TFX components have been
+containerized to compose the Kubeflow pipeline and the sample illustrates the
+ability to configure the pipeline to read large public dataset and execute
+training and data processing steps at scale in the cloud.

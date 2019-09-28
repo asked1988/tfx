@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for tfx.tools.cli.cli."""
+"""Tests for tfx.tools.cli.cli_main."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +21,7 @@ import codecs
 import locale
 import os
 
-from click.testing import CliRunner
+from click import testing as click_testing
 import tensorflow as tf
 from tfx.tools.cli.cli_main import cli_group
 
@@ -31,15 +31,20 @@ class CliTest(tf.test.TestCase):
   def setUp(self):
     # Change the encoding for Click since Python 3 is configured to use ASCII as
     # encoding for the environment.
+    super(CliTest, self).setUp()
     if codecs.lookup(locale.getpreferredencoding()).name == 'ascii':
       os.environ['LANG'] = 'en_US.utf-8'
-    self.runner = CliRunner()
+    self.runner = click_testing.CliRunner()
 
-  def test_cli_pipeline(self):
+  def testCliPipeline(self):
     result = self.runner.invoke(cli_group, ['pipeline'])
     self.assertIn('CLI', result.output)
 
-  def test_cli_invalid_command(self):
+  def testCliRun(self):
+    result = self.runner.invoke(cli_group, ['run'])
+    self.assertIn('CLI', result.output)
+
+  def testCliInvalidCommand(self):
     result = self.runner.invoke(cli_group, ['pipelin'])
     self.assertNotEqual(0, result.exit_code)
 

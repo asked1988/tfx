@@ -24,6 +24,7 @@ import tensorflow as tf
 import tensorflow_data_validation as tfdv
 
 from tensorflow_data_validation.coders import csv_decoder
+from tensorflow_data_validation.utils import batch_util
 
 from google.protobuf import text_format
 from tensorflow.python.lib.io import file_io  # pylint: disable=g-direct-tensorflow-import
@@ -99,7 +100,7 @@ def compute_stats(input_handle,
           | 'ReadData' >> beam.io.textio.ReadFromText(
               file_pattern=input_handle, skip_header_lines=1)
           | 'DecodeData' >>
-          csv_decoder.DecodeCSV(column_names=taxi.CSV_COLUMN_NAMES))
+          csv_decoder.DecodeCSVToDict(column_names=taxi.CSV_COLUMN_NAMES))
     else:
       query = taxi.make_sql(
           table_name=input_handle, max_rows=max_rows, for_eval=for_eval)
@@ -113,6 +114,8 @@ def compute_stats(input_handle,
 
     _ = (
         raw_data
+        |
+        'BatchExamplesToArrowTables' >> batch_util.BatchExamplesToArrowTables()
         | 'GenerateStatistics' >> tfdv.GenerateStatistics()
         | 'WriteStatsOutput' >> beam.io.WriteToTFRecord(
             stats_path,

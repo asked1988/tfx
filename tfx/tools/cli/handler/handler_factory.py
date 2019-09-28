@@ -23,9 +23,7 @@ import click
 
 from typing import Dict, Text, Any
 from tfx.tools.cli import labels
-from tfx.tools.cli.handler import airflow_handler
 from tfx.tools.cli.handler import base_handler
-from tfx.tools.cli.handler import kubeflow_handler
 
 
 def detect_handler(flags_dict: Dict[Text, Any]) -> base_handler.BaseHandler:
@@ -49,14 +47,23 @@ def detect_handler(flags_dict: Dict[Text, Any]) -> base_handler.BaseHandler:
     sys.exit('Multiple orchestrators found. Choose one using --engine flag.')
   if labels.AIRFLOW_PACKAGE_NAME in packages_list:
     click.echo('Detected Airflow.')
+    click.echo(
+        'Use --engine flag if you intend to use a different orchestrator.')
     flags_dict[labels.ENGINE_FLAG] = 'airflow'
+    from tfx.tools.cli.handler import airflow_handler  # pylint: disable=g-import-not-at-top
     return airflow_handler.AirflowHandler(flags_dict)
   elif labels.KUBEFLOW_PACKAGE_NAME in packages_list:
     click.echo('Detected Kubeflow.')
+    click.echo(
+        'Use --engine flag if you intend to use a different orchestrator.')
     flags_dict[labels.ENGINE_FLAG] = 'kubeflow'
+    from tfx.tools.cli.handler import kubeflow_handler  # pylint: disable=g-import-not-at-top
     return kubeflow_handler.KubeflowHandler(flags_dict)
-  # TODO(b/132286477):Update to beam runner later.
-  sys.exit('Orchestrator missing in the environment.')
+  else:
+    click.echo('Detected Beam.')
+    flags_dict[labels.ENGINE_FLAG] = 'beam'
+    from tfx.tools.cli.handler import beam_handler  # pylint: disable=g-import-not-at-top
+    return beam_handler.BeamHandler(flags_dict)
 
 
 def create_handler(flags_dict: Dict[Text, Any]) -> base_handler.BaseHandler:
@@ -70,15 +77,23 @@ def create_handler(flags_dict: Dict[Text, Any]) -> base_handler.BaseHandler:
 
   Returns:
     Corresponding Handler object.
-
   """
   engine = flags_dict[labels.ENGINE_FLAG]
+  packages_list = str(subprocess.check_output(['pip', 'freeze', '--local']))
   if engine == 'airflow':
+    if labels.AIRFLOW_PACKAGE_NAME not in packages_list:
+      sys.exit('Airflow not found.')
+    from tfx.tools.cli.handler import airflow_handler  # pylint: disable=g-import-not-at-top
     return airflow_handler.AirflowHandler(flags_dict)
   elif engine == 'kubeflow':
+    if labels.KUBEFLOW_PACKAGE_NAME not in packages_list:
+      sys.exit('Kubeflow not found.')
+    from tfx.tools.cli.handler import kubeflow_handler  # pylint: disable=g-import-not-at-top
     return kubeflow_handler.KubeflowHandler(flags_dict)
+  elif engine == 'beam':
+    from tfx.tools.cli.handler import beam_handler  # pylint: disable=g-import-not-at-top
+    return beam_handler.BeamHandler(flags_dict)
   elif engine == 'auto':
     return detect_handler(flags_dict)
   else:
     raise RuntimeError('Engine {} is not supported.'.format(engine))
-

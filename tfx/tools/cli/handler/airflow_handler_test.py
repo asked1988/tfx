@@ -29,23 +29,50 @@ from tfx.tools.cli.handler import airflow_handler
 
 
 def _MockSubprocess(cmd, env):  # pylint: disable=invalid-name, unused-argument
-  # Store pipeline_args in a pickle file
+  # Store pipeline_args in a json file.
   pipeline_args_path = env[labels.TFX_JSON_EXPORT_PIPELINE_ARGS_PATH]
-  pipeline_args = {'pipeline_name': 'chicago_taxi_simple'}
+  pipeline_root = os.path.join(os.environ['HOME'], 'tfx', 'pipelines')
+  pipeline_args = {
+      'pipeline_name': 'chicago_taxi_simple',
+      'pipeline_root': pipeline_root
+  }
   with open(pipeline_args_path, 'w') as f:
     json.dump(pipeline_args, f)
+  return 0
 
 
-def _MockSubprocess2(cmd):  # pylint: disable=invalid-name, unused-argument
+def _MockSubprocess2(cmd, env=None):  # pylint: disable=invalid-name, unused-argument
   click.echo(cmd)
+  return 0
+
+
+def _MockSubprocess3(cmd, env):  # pylint: disable=invalid-name, unused-argument
+  # Store pipeline_args in a json file.
+  pipeline_args_path = env[labels.TFX_JSON_EXPORT_PIPELINE_ARGS_PATH]
+  pipeline_args = {}
+  with open(pipeline_args_path, 'w') as f:
+    json.dump(pipeline_args, f)
+  return 0
+
+
+def _MockSubprocess4(cmd):  # pylint: disable=invalid-name, unused-argument
+  list_dags_output_path = os.path.join(
+      os.path.dirname(os.path.dirname(__file__)), 'testdata',
+      'test_airflow_list_dags_output.txt')
+  with open(list_dags_output_path, 'rb') as f:
+    list_dags_output = f.read()
+  return list_dags_output
 
 
 class AirflowHandlerTest(tf.test.TestCase):
 
   def setUp(self):
-    self._home = os.path.join(
-        os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', self.get_temp_dir()),
-        self._testMethodName)
+    super(AirflowHandlerTest, self).setUp()
+    self._tmp_dir = os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR',
+                                   self.get_temp_dir())
+    self._home = os.path.join(self._tmp_dir, self._testMethodName)
+    self._olddir = os.getcwd()
+    os.chdir(self._tmp_dir)
     self._original_home_value = os.environ.get('HOME', '')
     os.environ['HOME'] = self._home
     self._original_airflow_home_value = os.environ.get('AIRFLOW_HOME', '')
@@ -56,33 +83,22 @@ class AirflowHandlerTest(tf.test.TestCase):
     self.chicago_taxi_pipeline_dir = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), 'testdata')
     self.pipeline_path = os.path.join(self.chicago_taxi_pipeline_dir,
-                                      'test_pipeline.py')
+                                      'test_pipeline_airflow_1.py')
+    self.pipeline_root = os.path.join(self._home, 'tfx', 'pipelines')
     self.pipeline_name = 'chicago_taxi_simple'
+    self.run_id = 'manual__2019-07-19T19:56:02+00:00'
 
     # Pipeline args for mocking subprocess
     self.pipeline_args = {'pipeline_name': 'chicago_taxi_simple'}
 
   def tearDown(self):
+    super(AirflowHandlerTest, self).tearDown()
     os.environ['HOME'] = self._original_home_value
     os.environ['AIRFLOW_HOME'] = self._original_airflow_home_value
+    os.chdir(self._olddir)
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_extract_pipeline_args(self):
-    flags_dict = {labels.ENGINE_FLAG: self.engine,
-                  labels.PIPELINE_DSL_PATH: self.pipeline_path}
-    handler = airflow_handler.AirflowHandler(flags_dict)
-    pipeline_args = handler._extract_pipeline_args()
-    self.assertEqual(pipeline_args, self.pipeline_args)
-
-  def test_get_handler_home(self):
-    flags_dict = {labels.ENGINE_FLAG: self.engine,
-                  labels.PIPELINE_DSL_PATH: self.pipeline_path}
-    handler = airflow_handler.AirflowHandler(flags_dict)
-    handler_home_dir = 'AIRFLOW_HOME'
-    self.assertEqual(os.environ[handler_home_dir], handler._handler_home_dir)
-
-  @mock.patch('subprocess.call', _MockSubprocess)
-  def test_save_pipeline(self):
+  def testSavePipeline(self):
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_DSL_PATH: self.pipeline_path}
     handler = airflow_handler.AirflowHandler(flags_dict)
@@ -90,24 +106,24 @@ class AirflowHandlerTest(tf.test.TestCase):
     handler._save_pipeline(pipeline_args)
     self.assertTrue(tf.io.gfile.exists(os.path.join(
         handler._handler_home_dir,
-        'dags',
         self.pipeline_args[labels.PIPELINE_NAME])))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_create_pipeline(self):
+  def testCreatePipeline(self):
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_DSL_PATH: self.pipeline_path}
     handler = airflow_handler.AirflowHandler(flags_dict)
     handler.create_pipeline()
-    handler_pipeline_path = handler._get_handler_pipeline_path(
-        self.pipeline_args[labels.PIPELINE_NAME])
-    self.assertTrue(tf.io.gfile.exists(os.path.join(
-        handler_pipeline_path, 'test_pipeline.py')))
+    handler_pipeline_path = os.path.join(
+        handler._handler_home_dir, self.pipeline_args[labels.PIPELINE_NAME], '')
+    self.assertTrue(
+        tf.io.gfile.exists(
+            os.path.join(handler_pipeline_path, 'test_pipeline_airflow_1.py')))
     self.assertTrue(tf.io.gfile.exists(os.path.join(
         handler_pipeline_path, 'pipeline_args.json')))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_create_pipeline_existent_pipeline(self):
+  def testCreatePipelineExistentPipeline(self):
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_DSL_PATH: self.pipeline_path}
     handler = airflow_handler.AirflowHandler(flags_dict)
@@ -115,14 +131,15 @@ class AirflowHandlerTest(tf.test.TestCase):
     # Run create_pipeline again to test.
     with self.assertRaises(SystemExit) as err:
       handler.create_pipeline()
-    self.assertEqual(str(err.exception), 'Pipeline {} already exists.'
-                     .format(self.pipeline_args[labels.PIPELINE_NAME]))
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" already exists.'.format(
+            self.pipeline_args[labels.PIPELINE_NAME]))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_update_pipeline(self):
+  def testUpdatePipeline(self):
     # First create pipeline with test_pipeline.py
     pipeline_path_1 = os.path.join(self.chicago_taxi_pipeline_dir,
-                                   'test_pipeline.py')
+                                   'test_pipeline_airflow_1.py')
     flags_dict_1 = {labels.ENGINE_FLAG: self.engine,
                     labels.PIPELINE_DSL_PATH: pipeline_path_1}
     handler = airflow_handler.AirflowHandler(flags_dict_1)
@@ -130,31 +147,33 @@ class AirflowHandlerTest(tf.test.TestCase):
 
     # Update test_pipeline and run update_pipeline
     pipeline_path_2 = os.path.join(self.chicago_taxi_pipeline_dir,
-                                   'test_pipeline_2.py')
+                                   'test_pipeline_airflow_2.py')
     flags_dict_2 = {labels.ENGINE_FLAG: self.engine,
                     labels.PIPELINE_DSL_PATH: pipeline_path_2}
     handler = airflow_handler.AirflowHandler(flags_dict_2)
     handler.update_pipeline()
-    handler_pipeline_path = handler._get_handler_pipeline_path(
-        self.pipeline_args[labels.PIPELINE_NAME])
-    self.assertTrue(tf.io.gfile.exists(os.path.join(
-        handler_pipeline_path, 'test_pipeline_2.py')))
+    handler_pipeline_path = os.path.join(
+        handler._handler_home_dir, self.pipeline_args[labels.PIPELINE_NAME], '')
+    self.assertTrue(
+        tf.io.gfile.exists(
+            os.path.join(handler_pipeline_path, 'test_pipeline_airflow_2.py')))
     self.assertTrue(tf.io.gfile.exists(os.path.join(
         handler_pipeline_path, 'pipeline_args.json')))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_update_pipeline_no_pipeline(self):
+  def testUpdatePipelineNoPipeline(self):
     # Update pipeline without craeting one.
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_DSL_PATH: self.pipeline_path}
     handler = airflow_handler.AirflowHandler(flags_dict)
     with self.assertRaises(SystemExit) as err:
       handler.update_pipeline()
-    self.assertEqual(str(err.exception), 'Pipeline {} does not exist.'
-                     .format(self.pipeline_args[labels.PIPELINE_NAME]))
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" does not exist.'.format(
+            self.pipeline_args[labels.PIPELINE_NAME]))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_delete_pipeline(self):
+  def testDeletePipeline(self):
     # First create a pipeline.
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_DSL_PATH: self.pipeline_path}
@@ -166,21 +185,22 @@ class AirflowHandlerTest(tf.test.TestCase):
                   labels.PIPELINE_NAME: self.pipeline_name}
     handler = airflow_handler.AirflowHandler(flags_dict)
     handler.delete_pipeline()
-    handler_pipeline_path = handler._get_handler_pipeline_path(
-        self.pipeline_args[labels.PIPELINE_NAME])
+    handler_pipeline_path = os.path.join(
+        handler._handler_home_dir, self.pipeline_args[labels.PIPELINE_NAME], '')
     self.assertFalse(tf.io.gfile.exists(handler_pipeline_path))
 
   @mock.patch('subprocess.call', _MockSubprocess)
-  def test_delete_pipeline_non_existent_pipeline(self):
+  def testDeletePipelineNonExistentPipeline(self):
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_NAME: self.pipeline_name}
     handler = airflow_handler.AirflowHandler(flags_dict)
     with self.assertRaises(SystemExit) as err:
       handler.delete_pipeline()
-    self.assertEqual(str(err.exception), 'Pipeline {} does not exist.'
-                     .format(flags_dict[labels.PIPELINE_NAME]))
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" does not exist.'.format(
+            flags_dict[labels.PIPELINE_NAME]))
 
-  def test_list_pipelines_non_empty(self):
+  def testListPipelinesNonEmpty(self):
     # First create two pipelines in the dags folder.
     handler_pipeline_path_1 = os.path.join(os.environ['AIRFLOW_HOME'],
                                            'dags',
@@ -200,19 +220,117 @@ class AirflowHandlerTest(tf.test.TestCase):
     self.assertIn('pipeline_1', captured.contents())
     self.assertIn('pipeline_2', captured.contents())
 
-  def test_list_pipelines_empty(self):
+  def testListPipelinesEmpty(self):
     flags_dict = {labels.ENGINE_FLAG: self.engine}
     handler = airflow_handler.AirflowHandler(flags_dict)
     with self.captureWritesToStream(sys.stdout) as captured:
       handler.list_pipelines()
     self.assertIn('No pipelines to display.', captured.contents())
 
+  @mock.patch('subprocess.call', _MockSubprocess)
+  def testCompilePipeline(self):
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_DSL_PATH: self.pipeline_path
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.compile_pipeline()
+    self.assertIn('Pipeline compiled successfully', captured.contents())
+
+  @mock.patch('subprocess.call', _MockSubprocess3)
+  def testCompilePipelineNoPipelineArgs(self):
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_DSL_PATH: self.pipeline_path
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.assertRaises(SystemExit) as err:
+      handler.compile_pipeline()
+    self.assertEqual(
+        str(err.exception),
+        'Unable to compile pipeline. Check your pipeline dsl.')
+
+  @mock.patch('subprocess.call', _MockSubprocess)
+  def testPipelineSchemaNoPipelineRoot(self):
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_DSL_PATH: self.pipeline_path
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    handler.create_pipeline()
+
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_NAME: self.pipeline_name,
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.assertRaises(SystemExit) as err:
+      handler.get_schema()
+    self.assertEqual(
+        str(err.exception),
+        'Create a run before inferring schema. If pipeline is already running, then wait for it to successfully finish.'
+    )
+
+  @mock.patch('subprocess.call', _MockSubprocess)
+  def testPipelineSchemaNoSchemaGenOutput(self):
+    # First create a pipeline.
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_DSL_PATH: self.pipeline_path
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    handler.create_pipeline()
+
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_NAME: self.pipeline_name,
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    tf.io.gfile.makedirs(self.pipeline_root)
+    with self.assertRaises(SystemExit) as err:
+      handler.get_schema()
+    self.assertEqual(
+        str(err.exception),
+        'Either SchemaGen component does not exist or pipeline is still running. If pipeline is running, then wait for it to successfully finish.'
+    )
+
+  @mock.patch('subprocess.call', _MockSubprocess)
+  def testPipelineSchemaSuccessfulRun(self):
+    # First create a pipeline.
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_DSL_PATH: self.pipeline_path
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    handler.create_pipeline()
+
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_NAME: self.pipeline_name,
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    # Create fake schema in pipeline root.
+    schema_path = os.path.join(self.pipeline_root, 'SchemaGen', 'output', '3')
+    tf.io.gfile.makedirs(schema_path)
+    with open(os.path.join(schema_path, 'schema.pbtxt'), 'w') as f:
+      f.write('SCHEMA')
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.get_schema()
+      curr_dir_path = os.path.join(os.getcwd(), 'schema.pbtxt')
+      self.assertIn('Path to schema: {}'.format(curr_dir_path),
+                    captured.contents())
+      self.assertIn(
+          '*********SCHEMA FOR {}**********'.format(self.pipeline_name.upper()),
+          captured.contents())
+      self.assertTrue(tf.io.gfile.exists(curr_dir_path))
+
   @mock.patch('subprocess.call', _MockSubprocess2)
-  def test_run_pipeline(self):
+  def testCreateRun(self):
     # Create a pipeline in dags folder.
-    handler_pipeline_path = os.path.join(os.environ['AIRFLOW_HOME'],
-                                         'dags',
-                                         self.pipeline_name)
+    handler_pipeline_path = os.path.join(
+        os.environ['AIRFLOW_HOME'], 'dags',
+        self.pipeline_args[labels.PIPELINE_NAME])
     tf.io.gfile.makedirs(handler_pipeline_path)
 
     # Now run the pipeline
@@ -220,21 +338,120 @@ class AirflowHandlerTest(tf.test.TestCase):
                   labels.PIPELINE_NAME: self.pipeline_name}
     handler = airflow_handler.AirflowHandler(flags_dict)
     with self.captureWritesToStream(sys.stdout) as captured:
-      handler.run_pipeline()
+      handler.create_run()
     self.assertIn("['airflow', 'unpause', '" + self.pipeline_name + "']",
                   captured.contents())
     self.assertIn("['airflow', 'trigger_dag', '" + self.pipeline_name + "']",
                   captured.contents())
 
-  def test_run_pipeline_no_pipeline(self):
+  def testCreateRunNoPipeline(self):
     # Run pipeline without creating one.
     flags_dict = {labels.ENGINE_FLAG: self.engine,
                   labels.PIPELINE_NAME: self.pipeline_name}
     handler = airflow_handler.AirflowHandler(flags_dict)
     with self.assertRaises(SystemExit) as err:
-      handler.run_pipeline()
-    self.assertEqual(str(err.exception), 'Pipeline {} does not exist.'
-                     .format(flags_dict[labels.PIPELINE_NAME]))
+      handler.create_run()
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" does not exist.'.format(
+            flags_dict[labels.PIPELINE_NAME]))
+
+  @mock.patch('subprocess.call', _MockSubprocess2)
+  @mock.patch('subprocess.check_output', _MockSubprocess2)
+  def testListRuns(self):
+    # Create a pipeline in dags folder.
+    handler_pipeline_path = os.path.join(
+        os.environ['AIRFLOW_HOME'], 'dags',
+        self.pipeline_args[labels.PIPELINE_NAME])
+    tf.io.gfile.makedirs(handler_pipeline_path)
+
+    # Now run the pipeline
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_NAME: self.pipeline_name,
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.list_runs()
+    self.assertIn("['airflow', 'list_dag_runs', '" + self.pipeline_name + "']",
+                  captured.contents())
+
+  def testListRunsWrongPipeline(self):
+    # Run pipeline without creating one.
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.PIPELINE_NAME: 'chicago_taxi'
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.assertRaises(SystemExit) as err:
+      handler.list_runs()
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" does not exist.'.format(
+            flags_dict[labels.PIPELINE_NAME]))
+
+  @mock.patch('subprocess.check_output', _MockSubprocess4)
+  def testGetRun(self):
+    # Create a pipeline in dags folder.
+    handler_pipeline_path = os.path.join(
+        os.environ['AIRFLOW_HOME'], 'dags',
+        self.pipeline_args[labels.PIPELINE_NAME])
+    tf.io.gfile.makedirs(handler_pipeline_path)
+
+    # Now run the pipeline
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.RUN_ID: self.run_id,
+        labels.PIPELINE_NAME: self.pipeline_name
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.get_run()
+    self.assertIn('run_id : ' + self.run_id, captured.contents())
+    self.assertIn('state : running', captured.contents())
+
+  def testGetRunWrongPipeline(self):
+    # Run pipeline without creating one.
+    flags_dict = {
+        labels.ENGINE_FLAG: self.engine,
+        labels.RUN_ID: self.run_id,
+        labels.PIPELINE_NAME: self.pipeline_name,
+    }
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.assertRaises(SystemExit) as err:
+      handler.get_run()
+    self.assertEqual(
+        str(err.exception), 'Pipeline "{}" does not exist.'.format(
+            flags_dict[labels.PIPELINE_NAME]))
+
+  @mock.patch('subprocess.call', _MockSubprocess2)
+  def testDeleteRun(self):
+    # Create a pipeline in dags folder.
+    handler_pipeline_path = os.path.join(
+        os.environ['AIRFLOW_HOME'], 'dags',
+        self.pipeline_args[labels.PIPELINE_NAME])
+    tf.io.gfile.makedirs(handler_pipeline_path)
+
+    # Now run the pipeline
+    flags_dict = {labels.ENGINE_FLAG: self.engine, labels.RUN_ID: self.run_id}
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.delete_run()
+    self.assertIn('Not supported for Airflow.', captured.contents())
+
+  @mock.patch('subprocess.call', _MockSubprocess2)
+  def testTerminateRun(self):
+    # Create a pipeline in dags folder.
+    handler_pipeline_path = os.path.join(
+        os.environ['AIRFLOW_HOME'], 'dags',
+        self.pipeline_args[labels.PIPELINE_NAME])
+    tf.io.gfile.makedirs(handler_pipeline_path)
+
+    # Now run the pipeline
+    flags_dict = {labels.ENGINE_FLAG: self.engine, labels.RUN_ID: self.run_id}
+    handler = airflow_handler.AirflowHandler(flags_dict)
+    with self.captureWritesToStream(sys.stdout) as captured:
+      handler.terminate_run()
+    self.assertIn('Not supported for Airflow.', captured.contents())
+
 
 if __name__ == '__main__':
   tf.test.main()

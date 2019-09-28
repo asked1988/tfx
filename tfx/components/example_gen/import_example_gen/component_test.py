@@ -19,19 +19,19 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tfx.components.example_gen.import_example_gen import component
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+  def testConstruct(self):
+    input_base = standard_artifacts.ExternalArtifact()
     import_example_gen = component.ImportExampleGen(
-        input_base=channel.as_channel([input_base]))
+        input_base=channel_utils.as_channel([input_base]))
     self.assertEqual('ExamplesPath',
-                     import_example_gen.outputs.examples.type_name)
-    artifact_collection = import_example_gen.outputs.examples.get()
+                     import_example_gen.outputs['examples'].type_name)
+    artifact_collection = import_example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
 

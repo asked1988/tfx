@@ -19,20 +19,21 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tfx.components.model_validator import component
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
-    examples = types.TfxArtifact(type_name='ExamplesPath')
-    model = types.TfxArtifact(type_name='ModelExportPath')
+  def testConstruct(self):
+    examples = standard_artifacts.Examples()
+    model = standard_artifacts.Model()
     model_validator = component.ModelValidator(
-        examples=channel.as_channel([examples]),
-        model=channel.as_channel([model]))
+        examples=channel_utils.as_channel([examples]),
+        model=channel_utils.as_channel([model]))
     self.assertEqual('ModelBlessingPath',
-                     model_validator.outputs.blessing.type_name)
+                     model_validator.outputs['blessing'].type_name)
+
 
 if __name__ == '__main__':
   tf.test.main()

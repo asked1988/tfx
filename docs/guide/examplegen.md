@@ -11,11 +11,11 @@ and shuffles the dataset for ML best practice.
 ## ExampleGen and Other Components
 
 ExampleGen provides data to components that make use of the
-[TensorFlow Data Validation](tfdv.md) library, such as [SchemaGen](schemagen.md),
-[StatisticsGen](statsgen.md), and [Example Validator](exampleval.md).  It also
-provides data to [Transform](transform.md), which makes use of the
-[TensorFlow Transform](tft.md) library, and ultimately to deployment targets
-during inference.
+[TensorFlow Data Validation](tfdv.md) library, such as
+[SchemaGen](schemagen.md), [StatisticsGen](statsgen.md), and
+[Example Validator](exampleval.md). It also provides data to
+[Transform](transform.md), which makes use of the [TensorFlow Transform](tft.md)
+library, and ultimately to deployment targets during inference.
 
 ## How to use an ExampleGen Component
 
@@ -42,7 +42,25 @@ examples = tfrecord_input(path_to_tfrecord_dir)
 example_gen = ImportExampleGen(input_base=examples)
 ```
 
-## Custom input/output split
+## Span, Version and Split
+
+A Span is a grouping of training examples. If your data is persisted on a
+filesystem, each Span may be stored in a separate directory. The semantics of a
+Span are not hardcoded into TFX; a Span may correspond to a day of data, an hour
+of data, or any other grouping that is meaningful to your task.
+
+Each Span can hold multiple Versions of data. To give an example, if you remove
+some examples from a Span to clean up poor quality data, this could result in a
+new Version of that Span. By default, TFX components operate on the latest
+Version within a Span.
+
+Each Version within a Span can further be subdivided into multiple Splits. The
+most common use-case for splitting a Span is to split it into training and eval
+data.
+
+![Spans and Splits](images/spans_splits.png)
+
+### Custom input/output split
 
 Note: this feature is only available after TFX 0.14.
 
@@ -81,24 +99,90 @@ examples = csv_input(input_dir)
 example_gen = CsvExampleGen(input_base=examples, input_config=input)
 ```
 
-For file based example gen, e.g., CsvExampleGen and ImportExampleGen, `pattern`
+For file based example gen (e.g. CsvExampleGen and ImportExampleGen), `pattern`
 is a glob relative file pattern that maps to input files with root directory
-given by input base path. For BigQueryExampleGen, `pattern` is BigQuery SQL.
+given by input base path. For query-based example gen (e.g. BigQueryExampleGen,
+PrestoExampleGen), `pattern` is a SQL query.
 
-By default, we treat the entire input base dir as a single input split, and
-generate train and eval output split with size 2:1.
+By default, the entire input base dir is treated as a single input split, and
+the train and eval output split is generated with a 2:1 ratio.
 
 Please refer to
 [proto/example_gen.proto](https://github.com/tensorflow/tfx/blob/master/tfx/proto/example_gen.proto)
 for details.
 
+### Span
+
+Note: this feature is only available after TFX 0.15.
+
+Span can be retrieved by using '{SPAN}' spec in the
+[input glob pattern](https://github.com/tensorflow/tfx/blob/master/tfx/proto/example_gen.proto):
+
+*   This spec matches digits and maps the data into the relevant SPAN numbers.
+    For example, 'data_{SPAN}-*.tfrecord' will collect files like
+    'data_12-a.tfrecord', 'date_12-b.tfrecord'.
+*   When SPAN spec is missing, it's assumed to be always Span '0'.
+*   If SPAN is specified, pipeline will process the latest span, and store the
+    span number in metadata
+
+For example, let's assume there are input data:
+
+*   '/tmp/span-01/train/data'
+*   '/tmp/span-01/eval/data'
+*   '/tmp/span-02/train/data'
+*   '/tmp/span-02/eval/data'
+
+and the input config is shown as below:
+
+```python
+splits {
+  name: 'train'
+  pattern: 'span-{SPAN}/train/*'
+}
+splits {
+  name: 'eval'
+  pattern: 'span-{SPAN}/eval/*'
+}
+```
+
+when triggering the pipeline, it will process:
+
+*   '/tmp/span-02/train/data' as train split
+*   '/tmp/span-02/eval/data' as eval split
+
+with span number as '02'. If later on '/tmp/span-03/...' are ready, simply
+trigger the pipeline again and it will pick up span '03' for processing. Below
+shows the code example for using span spec:
+
+```python
+from  tfx.proto import example_gen_pb2
+
+input = example_gen_pb2.Input(splits=[
+                example_gen_pb2.Input.Split(name='train',
+                                            pattern='span-{SPAN}/train/*'),
+                example_gen_pb2.Input.Split(name='eval',
+                                            pattern='span-{SPAN}/eval/*')
+            ])
+examples = csv_input('/tmp')
+example_gen = CsvExampleGen(input_base=examples, input_config=input)
+```
+
+Note: Retrieving a certain span is not supported yet. You can only fix the
+pattern for now (for example, 'span-2/eval/*' instead of 'span-{SPAN}/eval/*'),
+but by doing this, span number stored in metadata will be zero.
+
+### Version
+
+Note: Version is not supported yet
+
 ## Custom ExampleGen
 
 Note: this feature is only available after TFX 0.14.
 
-If the currently available ExampleGen components don't fit your needs, you can
-create a custom ExampleGen, which will include a new executor extended from
-BaseExampleGenExecutor. Here's how to create a new file based ExampleGen:
+If the currently available ExampleGen components don't fit your needs, create
+a custom ExampleGen, which will include a new executor extended from BaseExampleGenExecutor.
+
+### File-Based ExampleGen
 
 First, extend BaseExampleGenExecutor with a custom Beam PTransform, which
 provides the conversion from your train/eval input split to TF examples. For
@@ -106,16 +190,49 @@ example, the
 [CsvExampleGen executor](https://github.com/tensorflow/tfx/blob/master/tfx/components/example_gen/csv_example_gen/executor.py)
 provides the conversion from an input CSV split to TF examples.
 
-Then, you can either create a simple component with above executor, for example,
-[CsvExampleGen component](https://github.com/tensorflow/tfx/blob/master/tfx/components/example_gen/csv_example_gen/component.py),
-or use the new Executor with a standard ExampleGen component like this:
+Then, create a component with above executor, as done in [CsvExampleGen component](https://github.com/tensorflow/tfx/blob/master/tfx/components/example_gen/csv_example_gen/component.py).
+Alternatively, pass a custom executor into the standard
+ExampleGen component as shown below.
 
 ```python
+from tfx.components.base import executor_spec
 from tfx.components.example_gen.component import FileBasedExampleGen
 from tfx.components.example_gen.csv_example_gen import executor
 from tfx.utils.dsl_utils import external_input
 
 examples = external_input(os.path.join(base_dir, 'data/simple'))
-example_gen = FileBasedExampleGen(input_base=examples,
-                                  executor_class=executor.Executor)
+example_gen = FileBasedExampleGen(
+    input_base=examples,
+    custom_executor_spec=executor_spec.ExecutorClassSpec(executor.Executor))
+```
+
+Now, we also support reading Avro and Parquet files using this
+[method](https://github.com/tensorflow/tfx/blob/master/tfx/components/example_gen/custom_executors/avro_component_test.py).
+
+### Query-Based ExampleGen
+
+First, extend BaseExampleGenExecutor with a custom Beam PTransform, which reads
+from the external data source. Then, create a simple component by
+extending QueryBasedExampleGen.
+
+This may or may not require additional connection configurations. For example,
+the
+[BigQuery executor](https://github.com/tensorflow/tfx/blob/master/tfx/components/example_gen/big_query_example_gen/executor.py)
+reads using a default beam.io connector, which abstracts the connection
+configuration details. The
+[Presto executor](https://github.com/tensorflow/tfx/blob/master/tfx/examples/custom_components/presto_example_gen/presto_component/executor.py),
+requires a custom Beam PTransform and a
+[custom connection configuration protobuf](https://github.com/tensorflow/tfx/blob/master/tfx/examples/custom_components/presto_example_gen/proto/presto_config.proto)
+as input.
+
+If a connection configuration is required for a custom ExampleGen component, create
+a new protobuf and pass it in through custom_config, which is now an optional
+execution parameter. Below is an example of how to use a configured component.
+
+```python
+from tfx.examples.custom_components.presto_example_gen.proto import presto_config_pb2
+from tfx.examples.custom_components.presto_example_gen.presto_component.component import PrestoExampleGen
+
+presto_config = presto_config_pb2.PrestoConnConfig(host='localhost', port=8080)
+example_gen = PrestoExampleGen(presto_config, query='SELECT * FROM chicago_taxi_trips')
 ```

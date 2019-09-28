@@ -20,31 +20,31 @@ from __future__ import print_function
 import tensorflow as tf
 from tfx.components.evaluator import component
 from tfx.proto import evaluator_pb2
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
-    examples = types.TfxArtifact(type_name='ExamplesPath')
-    model_exports = types.TfxArtifact(type_name='ModelExportPath')
+  def testConstruct(self):
+    examples = standard_artifacts.Examples()
+    model_exports = standard_artifacts.Model()
     evaluator = component.Evaluator(
-        examples=channel.as_channel([examples]),
-        model_exports=channel.as_channel([model_exports]))
-    self.assertEqual('ModelEvalPath', evaluator.outputs.output.type_name)
+        examples=channel_utils.as_channel([examples]),
+        model_exports=channel_utils.as_channel([model_exports]))
+    self.assertEqual('ModelEvalPath', evaluator.outputs['output'].type_name)
 
-  def test_construct_with_slice_spec(self):
-    examples = types.TfxArtifact(type_name='ExamplesPath')
-    model_exports = types.TfxArtifact(type_name='ModelExportPath')
+  def testConstructWithSliceSpec(self):
+    examples = standard_artifacts.Examples()
+    model_exports = standard_artifacts.Model()
     evaluator = component.Evaluator(
-        examples=channel.as_channel([examples]),
-        model_exports=channel.as_channel([model_exports]),
+        examples=channel_utils.as_channel([examples]),
+        model_exports=channel_utils.as_channel([model_exports]),
         feature_slicing_spec=evaluator_pb2.FeatureSlicingSpec(specs=[
             evaluator_pb2.SingleSlicingSpec(
                 column_for_slicing=['trip_start_hour'])
         ]))
-    self.assertEqual('ModelEvalPath', evaluator.outputs.output.type_name)
+    self.assertEqual('ModelEvalPath', evaluator.outputs['output'].type_name)
 
 
 if __name__ == '__main__':

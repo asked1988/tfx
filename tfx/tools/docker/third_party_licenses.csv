@@ -1,12 +1,13 @@
 APScheduler,https://raw.githubusercontent.com/agronholm/apscheduler/master/LICENSE.txt,MIT
+Click,https://raw.githubusercontent.com/pallets/click/master/LICENSE.rst,3-Clause BSD
 Flask,https://raw.githubusercontent.com/pallets/flask/master/LICENSE,3-Clause BSD
-Jinja2,https://raw.githubusercontent.com/pallets/jinja/master/LICENSE,BSD
+Jinja2,https://raw.githubusercontent.com/pallets/jinja/master/LICENSE.rst,BSD
 Keras-Applications,https://raw.githubusercontent.com/keras-team/keras-applications/master/LICENSE,MIT
 Keras-Preprocessing,https://raw.githubusercontent.com/keras-team/keras-preprocessing/master/LICENSE,MIT
 Mako,https://raw.githubusercontent.com/zzzeek/mako/master/LICENSE,MIT
 Markdown,https://raw.githubusercontent.com/Python-Markdown/markdown/master/LICENSE.md,BSD
 MarkupSafe,https://raw.githubusercontent.com/pallets/markupsafe/master/LICENSE.rst,BSD
-Pillow,https://raw.githubusercontent.com/python-pillow/Pillow/master/LICENSE
+Pillow,https://raw.githubusercontent.com/python-pillow/Pillow/master/LICENSE,PIL
 PyJWT,https://raw.githubusercontent.com/jpadilla/pyjwt/master/LICENSE,MIT
 PyVCF,https://raw.githubusercontent.com/jamescasbon/PyVCF/master/LICENSE,BSD
 PyYAML,https://raw.githubusercontent.com/yaml/pyyaml/master/LICENSE,MIT
@@ -38,7 +39,6 @@ chainermn,https://raw.githubusercontent.com/chainer/chainermn/master/LICENSE,MIT
 chainerrl,https://raw.githubusercontent.com/chainer/chainerrl/master/LICENSE,MIT
 chainerui,https://raw.githubusercontent.com/chainer/chainerui/master/LICENSE,MIT
 chardet,https://raw.githubusercontent.com/chardet/chardet/master/LICENSE,LGPL 2.1
-click,https://raw.githubusercontent.com/pallets/click/master/LICENSE,3-Clause BSD
 configparser,https://bitbucket.org/ambv/configparser/raw/78998f2ded2e840376adc712337545014fa9b622/README.rst,MIT
 crcmod,https://raw.githubusercontent.com/gsutil-mirrors/crcmod/master/LICENSE,MIT
 cryptography,https://raw.githubusercontent.com/pyca/cryptography/master/LICENSE,Apache or BSD
@@ -99,7 +99,7 @@ ipython-genutils,https://raw.githubusercontent.com/ipython/ipython_genutils/mast
 ipywidgets,https://raw.githubusercontent.com/jupyter-widgets/ipywidgets/master/LICENSE,3-Clause BSD
 itsdangerous,https://raw.githubusercontent.com/pallets/itsdangerous/master/LICENSE,3-Clause BSD
 jedi,https://raw.githubusercontent.com/davidhalter/jedi/master/LICENSE.txt,MIT
-jinja2,https://raw.githubusercontent.com/pallets/jinja/master/LICENSE,BSD
+jinja2,https://raw.githubusercontent.com/pallets/jinja/master/LICENSE.rst,BSD
 joblib,https://raw.githubusercontent.com/joblib/joblib/master/LICENSE.txt,3-Clause BSD
 jsonschema,https://raw.githubusercontent.com/Julian/jsonschema/master/COPYING,MIT
 jupyter,https://raw.githubusercontent.com/jupyter/notebook/master/COPYING.md,BSD
@@ -148,6 +148,7 @@ pycparser,https://raw.githubusercontent.com/eliben/pycparser/master/LICENSE,BSD-
 pydot,https://raw.githubusercontent.com/erocarrera/pydot/master/LICENSE,MIT
 pyglet,https://raw.githubusercontent.com/adamlwgriffiths/Pyglet/master/LICENSE,3-Clause BSD
 pygments,https://bitbucket.org/birkenfeld/pygments-main/raw/7941677dc77d4f2bf0bbd6140ade85a9454b8b80/LICENSE,BSD
+pymongo,https://raw.githubusercontent.com/mher/pymongo/master/LICENSE,Apache 2.0
 pyparsing,https://raw.githubusercontent.com/pyparsing/pyparsing/master/LICENSE,MIT
 pyrsistent,https://raw.githubusercontent.com/tobgu/pyrsistent/master/LICENCE.mit,MIT
 python-dateutil,https://raw.githubusercontent.com/dateutil/dateutil/283a3a3a67245e1d5791e5478ce6ff688f2c348a/LICENSE,"Apache Software License, BSD License (Dual License)"
@@ -186,6 +187,7 @@ termcolor,https://raw.githubusercontent.com/hfeeki/termcolor/master/COPYING.txt,
 terminado,https://raw.githubusercontent.com/jupyter/terminado/master/LICENSE,BSD
 testpath,https://raw.githubusercontent.com/jupyter/testpath/master/LICENSE,MIT
 tfx,https://raw.githubusercontent.com/tensorflow/tfx/master/LICENSE,Apache 2.0
+tfx-nightly,https://raw.githubusercontent.com/tensorflow/tfx/master/LICENSE,Apache 2.0
 torch,https://raw.githubusercontent.com/pytorch/pytorch/master/LICENSE,BSD-3-clause
 torchvision,https://raw.githubusercontent.com/pytorch/vision/master/LICENSE,BSD-3-clause
 tornado,https://raw.githubusercontent.com/tornadoweb/tornado/stable/LICENSE,Apache Software License 2.0

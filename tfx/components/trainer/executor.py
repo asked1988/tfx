@@ -20,18 +20,17 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 import tensorflow_model_analysis as tfma
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Text
+from typing import Any, Dict, List, Text
 
 from tensorflow_metadata.proto.v0 import schema_pb2
+from tfx import types
 from tfx.components.base import base_executor
 from tfx.extensions.google_cloud_ai_platform import runner
 from tfx.proto import trainer_pb2
+from tfx.types import artifact_utils
+from tfx.utils import import_utils
 from tfx.utils import io_utils
 from tfx.utils import path_utils
-from tfx.utils import types
 from google.protobuf import json_format
 
 
@@ -66,8 +65,27 @@ class Executor(base_executor.BaseExecutor):
   # Name of subdirectory which contains checkpoints from prior runs
   _CHECKPOINT_FILE_NAME = 'checkpoint'
 
-  def Do(self, input_dict: Dict[Text, List[types.TfxArtifact]],
-         output_dict: Dict[Text, List[types.TfxArtifact]],
+  def _GetTrainerFn(self, exec_properties: Dict[Text, Any]) -> Any:
+    """Loads and returns user-defined trainer_fn."""
+
+    has_module_file = bool(exec_properties.get('module_file'))
+    has_trainer_fn = bool(exec_properties.get('trainer_fn'))
+
+    if has_module_file == has_trainer_fn:
+      raise ValueError(
+          "Neither or both of 'module_file' 'trainer_fn' have been supplied in "
+          "'exec_properties'.")
+
+    if has_module_file:
+      return import_utils.import_func_from_source(
+          exec_properties['module_file'], 'trainer_fn')
+
+    trainer_fn_path_split = exec_properties['trainer_fn'].split('.')
+    return import_utils.import_func_from_module(
+        '.'.join(trainer_fn_path_split[0:-1]), trainer_fn_path_split[-1])
+
+  def Do(self, input_dict: Dict[Text, List[types.Artifact]],
+         output_dict: Dict[Text, List[types.Artifact]],
          exec_properties: Dict[Text, Any]) -> None:
     """Uses a user-supplied tf.estimator to train a TensorFlow model locally.
 
@@ -78,8 +96,9 @@ class Executor(base_executor.BaseExecutor):
 
     Args:
       input_dict: Input dict from input key to a list of ML-Metadata Artifacts.
-        - transformed_examples: Transformed example.
-        - transform_output: Input transform graph.
+        - examples: Examples used for training, must include 'train' and 'eval'
+          splits.
+        - transform_output: Optional input transform graph.
         - schema: Schema of the data.
       output_dict: Output dict from output key to a list of Artifacts.
         - output: Exported model.
@@ -97,7 +116,8 @@ class Executor(base_executor.BaseExecutor):
       None
 
     Raises:
-      None
+      ValueError: When neither or both of 'module_file' and 'trainer_fn'
+        are present in 'exec_properties'.
     """
     self._log_startup(input_dict, output_dict, exec_properties)
 
@@ -116,21 +136,22 @@ class Executor(base_executor.BaseExecutor):
                                           exec_properties, executor_class_path,
                                           cmle_args)
 
-    trainer_fn = io_utils.import_func(exec_properties['module_file'],
-                                      'trainer_fn')
+    trainer_fn = self._GetTrainerFn(exec_properties)
 
     # Set up training parameters
     train_files = [
         _all_files_pattern(
-            types.get_split_uri(input_dict['transformed_examples'], 'train'))
+            artifact_utils.get_split_uri(input_dict['examples'], 'train'))
     ]
-    transform_output = types.get_single_uri(input_dict['transform_output'])
+    transform_output = artifact_utils.get_single_uri(
+        input_dict['transform_output']) if input_dict.get(
+            'transform_output', None) else None
     eval_files = [
         _all_files_pattern(
-            types.get_split_uri(input_dict['transformed_examples'], 'eval'))
+            artifact_utils.get_split_uri(input_dict['examples'], 'eval'))
     ]
     schema_file = io_utils.get_only_uri_in_dir(
-        types.get_single_uri(input_dict['schema']))
+        artifact_utils.get_single_uri(input_dict['schema']))
 
     train_args = trainer_pb2.TrainArgs()
     eval_args = trainer_pb2.EvalArgs()
@@ -144,7 +165,7 @@ class Executor(base_executor.BaseExecutor):
     train_steps = train_args.num_steps or None
     eval_steps = eval_args.num_steps or None
 
-    output_path = types.get_single_uri(output_dict['output'])
+    output_path = artifact_utils.get_single_uri(output_dict['output'])
     serving_model_dir = path_utils.serving_model_dir(output_path)
     eval_model_dir = path_utils.eval_model_dir(output_path)
 
@@ -162,7 +183,8 @@ class Executor(base_executor.BaseExecutor):
     hparams = tf.contrib.training.HParams(
         # A list of uris for train files.
         train_files=train_files,
-        # A single uri for transform graph produced by TFT.
+        # An optional single uri for transform graph produced by TFT. Will be
+        # None if not specified.
         transform_output=transform_output,
         # A single uri for the output directory of the serving model.
         serving_model_dir=serving_model_dir,

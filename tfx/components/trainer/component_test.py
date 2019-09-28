@@ -20,24 +20,98 @@ from __future__ import print_function
 import tensorflow as tf
 from tfx.components.trainer import component
 from tfx.proto import trainer_pb2
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
-    transformed_examples = types.TfxArtifact(type_name='ExamplesPath')
-    transform_output = types.TfxArtifact(type_name='TransformPath')
-    schema = types.TfxArtifact(type_name='SchemaPath')
+  def setUp(self):
+    super(ComponentTest, self).setUp()
+
+    self.examples = channel_utils.as_channel([standard_artifacts.Examples()])
+    self.transform_output = channel_utils.as_channel(
+        [standard_artifacts.TransformGraph()])
+    self.schema = channel_utils.as_channel([standard_artifacts.Schema()])
+    self.train_args = trainer_pb2.TrainArgs(num_steps=100)
+    self.eval_args = trainer_pb2.EvalArgs(num_steps=50)
+
+  def _verify_outputs(self, trainer):
+    self.assertEqual('ModelExportPath', trainer.outputs['output'].type_name)
+
+  def testConstructFromModuleFile(self):
+    module_file = '/path/to/module/file'
     trainer = component.Trainer(
-        module_file='/path/to/module/file',
-        transformed_examples=channel.as_channel([transformed_examples]),
-        transform_output=channel.as_channel([transform_output]),
-        schema=channel.as_channel([schema]),
-        train_args=trainer_pb2.TrainArgs(num_steps=100),
-        eval_args=trainer_pb2.EvalArgs(num_steps=50))
-    self.assertEqual('ModelExportPath', trainer.outputs.output.type_name)
+        module_file=module_file,
+        transformed_examples=self.examples,
+        transform_output=self.transform_output,
+        schema=self.schema,
+        train_args=self.train_args,
+        eval_args=self.eval_args)
+    self._verify_outputs(trainer)
+    self.assertEqual(module_file, trainer.spec.exec_properties['module_file'])
+
+  def testConstructFromTrainerFn(self):
+    trainer_fn = 'path.to.my_trainer_fn'
+    trainer = component.Trainer(
+        trainer_fn=trainer_fn,
+        transformed_examples=self.examples,
+        transform_output=self.transform_output,
+        schema=self.schema,
+        train_args=self.train_args,
+        eval_args=self.eval_args)
+    self._verify_outputs(trainer)
+    self.assertEqual(trainer_fn, trainer.spec.exec_properties['trainer_fn'])
+
+  def testConstructWithoutTransformOutput(self):
+    module_file = '/path/to/module/file'
+    trainer = component.Trainer(
+        module_file=module_file,
+        examples=self.examples,
+        schema=self.schema,
+        train_args=self.train_args,
+        eval_args=self.eval_args)
+    self._verify_outputs(trainer)
+    self.assertEqual(module_file, trainer.spec.exec_properties['module_file'])
+
+  def testConstructDuplicateExamples(self):
+    with self.assertRaises(ValueError):
+      _ = component.Trainer(
+          module_file='/path/to/module/file',
+          examples=self.examples,
+          transformed_examples=self.examples,
+          schema=self.schema,
+          train_args=self.train_args,
+          eval_args=self.eval_args)
+
+  def testConstructMissingTransformOutput(self):
+    with self.assertRaises(ValueError):
+      _ = component.Trainer(
+          module_file='/path/to/module/file',
+          transformed_examples=self.examples,
+          schema=self.schema,
+          train_args=self.train_args,
+          eval_args=self.eval_args)
+
+  def testConstructMissingUserModule(self):
+    with self.assertRaises(ValueError):
+      _ = component.Trainer(
+          examples=self.examples,
+          transform_output=self.transform_output,
+          schema=self.schema,
+          train_args=self.train_args,
+          eval_args=self.eval_args)
+
+  def testConstructDuplicateUserModule(self):
+    with self.assertRaises(ValueError):
+      _ = component.Trainer(
+          module_file='/path/to/module/file',
+          trainer_fn='path.to.my_trainer_fn',
+          examples=self.examples,
+          transform_output=self.transform_output,
+          schema=self.schema,
+          train_args=self.train_args,
+          eval_args=self.eval_args)
 
 
 if __name__ == '__main__':

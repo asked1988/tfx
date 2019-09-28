@@ -18,54 +18,90 @@ from __future__ import print_function
 
 from typing import Optional, Text
 
+from tfx import types
 from tfx.components.base import base_component
-from tfx.components.base.base_component import ChannelParameter
+from tfx.components.base import executor_spec
 from tfx.components.schema_gen import executor
-from tfx.utils import channel
-from tfx.utils import types
-
-
-class SchemaGenSpec(base_component.ComponentSpec):
-  """SchemaGen component spec."""
-
-  COMPONENT_NAME = 'SchemaGen'
-  PARAMETERS = {}
-  INPUTS = {
-      'stats': ChannelParameter(type_name='ExampleStatisticsPath'),
-  }
-  OUTPUTS = {
-      'output': ChannelParameter(type_name='SchemaPath'),
-  }
+from tfx.types import standard_artifacts
+from tfx.types.standard_component_specs import SchemaGenSpec
 
 
 class SchemaGen(base_component.BaseComponent):
-  """Official TFX SchemaGen component.
+  """A TFX SchemaGen component to generate a schema from the training data.
 
-  The SchemaGen component uses Tensorflow Data Validation (tfdv) to
-  generate a schema from input statistics.
+  The SchemaGen component uses [TensorFlow Data
+  Validation](https://www.tensorflow.org/tfx/data_validation) to
+  generate a schema from input statistics.  The following TFX libraries use the
+  schema:
+    - TensorFlow Data Validation
+    - TensorFlow Transform
+    - TensorFlow Model Analysis
+
+  In a typical TFX pipeline, the SchemaGen component generates a schema which is
+  is consumed by the other pipeline components.
+
+  Please see https://www.tensorflow.org/tfx/data_validation for more details.
+
+  ## Example
+  ```
+    # Generates an inferred schema based on given statistics files.
+    infer_schema = SchemaGen(stats=statistics_gen.outputs['output'])
+
+    # Provide an instance of schema that has already been implemented.
+    # Schema is the pipeline's expectation towards training data, under
+    # the assumption of which Transform and Trainer are implemented, and
+    # by which ExampleValidator validates which future training data and
+    # identify anomalies.
+    # Schema may have been inferred from previous executions of SchemaGen,
+    # or implemented manually.
+    fixed_schema = SchemaGen(schema=...)
+  ```
   """
+  # TODO(b/123941608): Update pydoc about how to use a user provided schema
 
   SPEC_CLASS = SchemaGenSpec
-  EXECUTOR_CLASS = executor.Executor
+  EXECUTOR_SPEC = executor_spec.ExecutorClassSpec(executor.Executor)
 
   def __init__(self,
-               stats: channel.Channel,
-               output: Optional[channel.Channel] = None,
-               name: Optional[Text] = None):
+               stats: Optional[types.Channel] = None,
+               schema: Optional[types.Channel] = None,
+               infer_feature_shape: Optional[bool] = False,
+               output: Optional[types.Channel] = None,
+               statistics: Optional[types.Channel] = None,
+               instance_name: Optional[Text] = None):
     """Constructs a SchemaGen component.
 
     Args:
-      stats: A Channel of 'ExampleStatisticsPath' type (required if spec is not
-        passed). This should contain at least a 'train' split. Other splits are
-        currently ignored.
-      output: Optional output 'SchemaPath' channel for schema result.
-      name: Optional unique name. Necessary iff multiple SchemaGen components
-        are declared in the same pipeline.
+      stats: A Channel of `ExampleStatistics` type (required if spec is not
+        passed). This should contain at least a `train` split. Other splits are
+        currently ignored. Exactly one of 'stats'/'statistics' or 'schema'
+        is required.
+      schema: A Channel of `Schema` type that provides an instance of Schema.
+        If provided, pass through this schema artifact as the output. Exactly
+        one of 'stats'/'statistics' or 'schema' is required.
+      infer_feature_shape: Boolean value indicating whether or not to infer the
+        shape of features. If the feature shape is not inferred, downstream
+        Tensorflow Transform component using the schema will parse input
+        as tf.SparseTensor.
+      output: Output `Schema` channel for schema result.
+      statistics: Future replacement of the 'stats' argument.
+      instance_name: Optional name assigned to this specific instance of
+        SchemaGen.  Required only if multiple SchemaGen components are declared
+        in the same pipeline.
+
+      Either `statistics` or `stats` must be present in the input arguments.
     """
-    output = output or channel.Channel(
-        type_name='SchemaPath',
-        artifacts=[types.TfxArtifact('SchemaPath')])
+    stats = stats or statistics
+    output = output or types.Channel(
+        type=standard_artifacts.Schema, artifacts=[standard_artifacts.Schema()])
+
+    if bool(stats) == bool(schema):
+      raise ValueError(
+          'Exactly one of statistics or schema must be supplied.')
+
     spec = SchemaGenSpec(
-        stats=channel.as_channel(stats),
+        stats=stats,
+        schema=schema,
+        infer_feature_shape=infer_feature_shape,
         output=output)
-    super(SchemaGen, self).__init__(spec=spec, name=name)
+    super(SchemaGen, self).__init__(spec=spec, instance_name=instance_name)

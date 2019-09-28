@@ -22,24 +22,25 @@ import tensorflow as tf
 # TODO(jyzhao): BucketizeWithInputBoundaries error without this.
 from tensorflow.contrib.boosted_trees.python.ops import quantile_ops  # pylint: disable=unused-import
 from tfx.components.model_validator import executor
-from tfx.utils import types
+from tfx.types import standard_artifacts
 
 
 class ExecutorTest(tf.test.TestCase):
 
   def setUp(self):
+    super(ExecutorTest, self).setUp()
     self._source_data_dir = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), 'testdata')
     output_data_dir = os.path.join(
         os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', self.get_temp_dir()),
         self._testMethodName)
-    self.component_name = 'test_component'
+    self.component_id = 'test_component'
 
     # Create input dict.
-    eval_examples = types.TfxArtifact(type_name='ExamplesPath', split='eval')
+    eval_examples = standard_artifacts.Examples(split='eval')
     eval_examples.uri = os.path.join(self._source_data_dir,
                                      'csv_example_gen/eval/')
-    model = types.TfxArtifact(type_name='ModelExportPath')
+    model = standard_artifacts.Model()
     model.uri = os.path.join(self._source_data_dir, 'trainer/current/')
     self._input_dict = {
         'examples': [eval_examples],
@@ -47,7 +48,7 @@ class ExecutorTest(tf.test.TestCase):
     }
 
     # Create output dict.
-    self._blessing = types.TfxArtifact('ModelBlessingPath')
+    self._blessing = standard_artifacts.ModelBlessing()
     self._blessing.uri = os.path.join(output_data_dir, 'blessing')
     self._output_dict = {
         'blessing': [self._blessing]
@@ -58,15 +59,15 @@ class ExecutorTest(tf.test.TestCase):
     self._context = executor.Executor.Context(tmp_dir=self._tmp_dir,
                                               unique_id='2')
 
-  def test_do_with_blessed_model(self):
+  def testDoWithBlessedModel(self):
     # Create exe properties.
     exec_properties = {
         'blessed_model':
             os.path.join(self._source_data_dir, 'trainer/blessed/'),
         'blessed_model_id':
             123,
-        'component_unique_name':
-            self.component_name,
+        'component_id':
+            self.component_id,
     }
 
     # Run executor.
@@ -79,12 +80,12 @@ class ExecutorTest(tf.test.TestCase):
     self.assertTrue(
         tf.gfile.Exists(os.path.join(self._blessing.uri, 'BLESSED')))
 
-  def test_do_without_blessed_model(self):
+  def testDoWithoutBlessedModel(self):
     # Create exe properties.
     exec_properties = {
         'blessed_model': None,
         'blessed_model_id': None,
-        'component_unique_name': self.component_name,
+        'component_id': self.component_id,
     }
 
     # Run executor.

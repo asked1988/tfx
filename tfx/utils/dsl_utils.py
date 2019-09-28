@@ -18,11 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import Text
-from tfx.utils import channel
-from tfx.utils import types
+from tensorflow.python.util import deprecation  # pylint: disable=g-direct-tensorflow-import
+from tfx import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
-def external_input(uri: Text) -> channel.Channel:
+def external_input(uri: Text) -> types.Channel:
   """Helper function to declare external input.
 
   Args:
@@ -31,33 +33,17 @@ def external_input(uri: Text) -> channel.Channel:
   Returns:
     input channel.
   """
-  instance = types.TfxArtifact(type_name='ExternalPath')
+  instance = standard_artifacts.ExternalArtifact()
   instance.uri = uri
-  return channel.as_channel([instance])
+  return channel_utils.as_channel([instance])
 
 
-# TODO(b/136598840): deprecate this, use external_input.
-def csv_input(uri: Text) -> channel.Channel:
-  """Helper function to declare input for csv_example_gen component.
+csv_input = deprecation.deprecated_alias(
+    deprecated_name='csv_input',
+    name='external_input',
+    func_or_class=external_input)
 
-  Args:
-    uri: path of an external directory with a single csv file inside.
-
-  Returns:
-    input channel.
-  """
-  return external_input(uri)
-
-
-# TODO(b/136598840): deprecate this, use external_input.
-def tfrecord_input(uri: Text) -> channel.Channel:
-  """Helper function to declare input for import_example_gen component.
-
-  Args:
-    uri: path of an external directory with tfrecord(contains tf examples) files
-      inside.
-
-  Returns:
-    input channel.
-  """
-  return external_input(uri)
+tfrecord_input = deprecation.deprecated_alias(
+    deprecated_name='tfrecord_input',
+    name='external_input',
+    func_or_class=external_input)

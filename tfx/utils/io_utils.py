@@ -17,11 +17,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import six
 import tensorflow as tf
-from typing import Callable
-from typing import List
-from typing import Text
+from typing import List, Text
 
 from google.protobuf import text_format
 from google.protobuf.message import Message
@@ -32,30 +29,18 @@ from tensorflow_metadata.proto.v0 import schema_pb2
 # Nano seconds per second.
 NANO_PER_SEC = 1000 * 1000 * 1000
 
+# If path starts with one of those, consider files are in remote filesystem.
+_REMOTE_FS_PREFIX = ['gs://', 'hdfs://', 's3://']
 
-def import_func(module_path: Text, fn_name: Text) -> Callable:  # pylint: disable=g-bare-generic
-  """Imports a function from a module provided as source file."""
 
-  # If a GCS bucket (gs://...), download to local filesystem first as
-  # importlib can't import from GCS
-  if module_path.startswith('gs://'):
-    module_filename = os.path.basename(module_path)
-    copy_file(module_path, module_filename, True)
-    module_path = module_filename
+def ensure_local(file_path: Text) -> Text:
+  """Ensures that the given file path is made available locally."""
+  if not any([file_path.startswith(prefix) for prefix in _REMOTE_FS_PREFIX]):
+    return file_path
 
-  try:
-    if six.PY2:
-      import imp  # pylint: disable=g-import-not-at-top
-      user_module = imp.load_source('user_module', module_path)
-    else:
-      import importlib.util  # pylint: disable=g-import-not-at-top
-      spec = importlib.util.spec_from_file_location('user_module', module_path)
-      user_module = importlib.util.module_from_spec(spec)
-      spec.loader.exec_module(user_module)  # pytype: disable=attribute-error
-  except IOError:
-    raise IOError('{} not found in import_func()'.format(module_path))
-
-  return getattr(user_module, fn_name)
+  local_path = os.path.basename(file_path)
+  copy_file(file_path, local_path, True)
+  return local_path
 
 
 def copy_file(src: Text, dst: Text, overwrite: bool = False):
@@ -64,7 +49,7 @@ def copy_file(src: Text, dst: Text, overwrite: bool = False):
   if overwrite and tf.gfile.Exists(dst):
     tf.gfile.Remove(dst)
   dst_dir = os.path.dirname(dst)
-  tf.gfile.MakeDirs(dst_dir)
+  tf.io.gfile.makedirs(dst_dir)
   tf.gfile.Copy(src, dst, overwrite=overwrite)
 
 
@@ -73,7 +58,7 @@ def copy_dir(src: Text, dst: Text) -> None:
 
   if tf.gfile.Exists(dst):
     tf.gfile.DeleteRecursively(dst)
-  tf.gfile.MakeDirs(dst)
+  tf.io.gfile.makedirs(dst)
 
   for dir_name, sub_dirs, leaf_files in tf.gfile.Walk(src):
     for leaf_file in leaf_files:
@@ -82,7 +67,7 @@ def copy_dir(src: Text, dst: Text) -> None:
       tf.gfile.Copy(leaf_file_path, new_file_path)
 
     for sub_dir in sub_dirs:
-      tf.gfile.MakeDirs(os.path.join(dst, sub_dir))
+      tf.io.gfile.makedirs(os.path.join(dst, sub_dir))
 
 
 def get_only_uri_in_dir(dir_path: Text) -> Text:
@@ -106,7 +91,7 @@ def delete_dir(path: Text) -> None:
 def write_string_file(file_name: Text, string_value: Text) -> None:
   """Writes a string to file."""
 
-  tf.gfile.MakeDirs(os.path.dirname(file_name))
+  tf.io.gfile.makedirs(os.path.dirname(file_name))
   file_io.write_string_to_file(file_name, string_value)
 
 
@@ -119,7 +104,7 @@ def write_pbtxt_file(file_name: Text, proto: Message) -> None:
 def write_tfrecord_file(file_name: Text, proto: Message) -> None:
   """Writes a serialized tfrecord to file."""
 
-  tf.gfile.MakeDirs(os.path.dirname(file_name))
+  tf.io.gfile.makedirs(os.path.dirname(file_name))
   with tf.python_io.TFRecordWriter(file_name) as writer:
     writer.write(proto.SerializeToString())
 

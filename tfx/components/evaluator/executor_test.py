@@ -23,13 +23,13 @@ import tensorflow as tf
 from tensorflow.contrib.boosted_trees.python.ops import quantile_ops  # pylint: disable=unused-import
 from tfx.components.evaluator import executor
 from tfx.proto import evaluator_pb2
-from tfx.utils import types
+from tfx.types import standard_artifacts
 from google.protobuf import json_format
 
 
 class ExecutorTest(tf.test.TestCase):
 
-  def test_do(self):
+  def testDo(self):
     source_data_dir = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), 'testdata')
     output_data_dir = os.path.join(
@@ -37,10 +37,10 @@ class ExecutorTest(tf.test.TestCase):
         self._testMethodName)
 
     # Create input dict.
-    train_examples = types.TfxArtifact(type_name='ExamplesPath', split='train')
-    eval_examples = types.TfxArtifact(type_name='ExamplesPath', split='eval')
+    train_examples = standard_artifacts.Examples(split='train')
+    eval_examples = standard_artifacts.Examples(split='eval')
     eval_examples.uri = os.path.join(source_data_dir, 'csv_example_gen/eval/')
-    model_exports = types.TfxArtifact(type_name='ModelExportPath')
+    model_exports = standard_artifacts.Model()
     model_exports.uri = os.path.join(source_data_dir, 'trainer/current/')
     input_dict = {
         'examples': [train_examples, eval_examples],
@@ -48,7 +48,7 @@ class ExecutorTest(tf.test.TestCase):
     }
 
     # Create output dict.
-    eval_output = types.TfxArtifact('ModelEvalPath')
+    eval_output = standard_artifacts.ModelEvaluation()
     eval_output.uri = os.path.join(output_data_dir, 'eval_output')
     output_dict = {'output': [eval_output]}
 
@@ -70,7 +70,10 @@ class ExecutorTest(tf.test.TestCase):
 
     # Check evaluator outputs.
     self.assertTrue(
-        tf.gfile.Exists(os.path.join(eval_output.uri, 'eval_config')))
+        # TODO(b/141490237): Update to only check eval_config.json after TFMA
+        # released with corresponding change.
+        tf.gfile.Exists(os.path.join(eval_output.uri, 'eval_config')) or
+        tf.gfile.Exists(os.path.join(eval_output.uri, 'eval_config.json')))
     self.assertTrue(tf.gfile.Exists(os.path.join(eval_output.uri, 'metrics')))
     self.assertTrue(tf.gfile.Exists(os.path.join(eval_output.uri, 'plots')))
 

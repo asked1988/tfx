@@ -20,29 +20,30 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 from tensorflow_metadata.proto.v0 import anomalies_pb2
+from tfx import types
 from tfx.components.example_validator import executor
+from tfx.types import standard_artifacts
 from tfx.utils import io_utils
-from tfx.utils import types
 
 
 class ExecutorTest(tf.test.TestCase):
 
-  def test_do(self):
+  def testDo(self):
     source_data_dir = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), 'testdata')
 
-    eval_stats_artifact = types.TfxArtifact('ExampleStatsPath', split='eval')
+    eval_stats_artifact = types.Artifact('ExampleStatsPath', split='eval')
     eval_stats_artifact.uri = os.path.join(source_data_dir,
                                            'statistics_gen/eval/')
 
-    schema_artifact = types.TfxArtifact('SchemaPath')
+    schema_artifact = standard_artifacts.Schema()
     schema_artifact.uri = os.path.join(source_data_dir, 'schema_gen/')
 
     output_data_dir = os.path.join(
         os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', self.get_temp_dir()),
         self._testMethodName)
 
-    validation_output = types.TfxArtifact('ExampleValidationPath')
+    validation_output = standard_artifacts.ExampleAnomalies()
     validation_output.uri = os.path.join(output_data_dir, 'output')
 
     input_dict = {

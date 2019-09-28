@@ -19,27 +19,27 @@ from __future__ import print_function
 
 from slack_component import component
 import tensorflow as tf
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
   def setUp(self):
-    self.model_export = channel.as_channel(
-        [types.TfxArtifact(type_name='ModelExportPath')])
-    self.model_blessing = channel.as_channel(
-        [types.TfxArtifact(type_name='ModelBlessingPath')])
+    super(ComponentTest, self).setUp()
+    self._model_export = channel_utils.as_channel([standard_artifacts.Model()])
+    self._model_blessing = channel_utils.as_channel(
+        [standard_artifacts.ModelBlessing()])
 
-  def test_construct(self):
+  def testConstruct(self):
     slack_component = component.SlackComponent(
-        model_export=self.model_export,
-        model_blessing=self.model_blessing,
+        model_export=self._model_export,
+        model_blessing=self._model_blessing,
         slack_token='token',
-        channel_id='channel_id',
+        slack_channel_id='slack_channel_id',
         timeout_sec=3600)
     self.assertEqual('ModelBlessingPath',
-                     slack_component.outputs.slack_blessing.type_name)
+                     slack_component.outputs['slack_blessing'].type_name)
 
 
 if __name__ == '__main__':

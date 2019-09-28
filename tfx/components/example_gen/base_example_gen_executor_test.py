@@ -23,7 +23,7 @@ import apache_beam as beam
 import tensorflow as tf
 from tfx.components.example_gen import base_example_gen_executor
 from tfx.proto import example_gen_pb2
-from tfx.utils import types
+from tfx.types import standard_artifacts
 from google.protobuf import json_format
 
 
@@ -68,14 +68,15 @@ class TestExampleGenExecutor(base_example_gen_executor.BaseExampleGenExecutor):
 class BaseExampleGenExecutorTest(tf.test.TestCase):
 
   def setUp(self):
+    super(BaseExampleGenExecutorTest, self).setUp()
     output_data_dir = os.path.join(
         os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR', self.get_temp_dir()),
         self._testMethodName)
 
     # Create output dict.
-    train_examples = types.TfxArtifact(type_name='ExamplesPath', split='train')
+    train_examples = standard_artifacts.Examples(split='train')
     train_examples.uri = os.path.join(output_data_dir, 'train')
-    eval_examples = types.TfxArtifact(type_name='ExamplesPath', split='eval')
+    eval_examples = standard_artifacts.Examples(split='eval')
     eval_examples.uri = os.path.join(output_data_dir, 'eval')
     self._output_dict = {'examples': [train_examples, eval_examples]}
 
@@ -84,7 +85,7 @@ class BaseExampleGenExecutorTest(tf.test.TestCase):
     self._eval_output_file = os.path.join(eval_examples.uri,
                                           'data_tfrecord-00000-of-00001.gz')
 
-  def test_do_input_split(self):
+  def testDoInputSplit(self):
     # Create exec proterties.
     exec_properties = {
         'input_config':
@@ -110,7 +111,7 @@ class BaseExampleGenExecutorTest(tf.test.TestCase):
         tf.gfile.GFile(self._train_output_file).size(),
         tf.gfile.GFile(self._eval_output_file).size())
 
-  def test_do_output_split(self):
+  def testDoOutputSplit(self):
     # Create exec proterties.
     exec_properties = {
         'input_config':

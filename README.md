@@ -23,8 +23,28 @@ warmstarting/resuming ML models from previous runs.
 
 ## Documentation
 
+### User Documentation
+
 Please see the
 [TFX User Guide](https://github.com/tensorflow/tfx/blob/master/docs/guide/index.md).
+
+### Development References
+
+#### Roadmap
+
+The TFX [Roadmap](https://github.com/tensorflow/tfx/blob/master/ROADMAP.md),
+which is updated quarterly.
+
+#### Release Details
+
+For detailed previous and upcoming changes, please
+[check here](https://github.com/tensorflow/tfx/blob/master/RELEASE.md)
+
+#### Requests For Comment
+
+For designs, we started to publish
+[RFCs](https://github.com/tensorflow/community/tree/master/rfcs) under the
+Tensorflow community.
 
 ## Examples
 
@@ -38,6 +58,7 @@ but other *untested* combinations may also work.
 
 tfx                                                                                 | tensorflow    | tensorflow-data-validation | tensorflow-model-analysis | tensorflow-metadata | tensorflow-transform | ml-metadata | apache-beam[gcp] | pyarrow |
 ----------------------------------------------------------------------------------- | ------------- | -------------------------- | ------------------------- | ------------------- | -------------------- | ----------- | ---------------- | ------- |
-[GitHub master](https://github.com/tensorflow/tfx/blob/master/tfx/g3doc/RELEASE.md) | nightly (1.x) | 0.13.1                     | 0.13.2                    | 0.13.0              | 0.13.0               | 0.13.2      | 2.12.0           | 0.11.1  |
+[GitHub master](https://github.com/tensorflow/tfx/blob/master/tfx/g3doc/RELEASE.md) | nightly (1.x) | 0.14.1                     | 0.14.0                    | 0.14.0              | 0.14.0               | 0.14.0      | 2.14.0           | 0.14.0  |
+0.14.0                                                                              | 1.14.0        | 0.14.1                     | 0.14.0                    | 0.14.0              | 0.14.0               | 0.14.0      | 2.14.0           | 0.14.0  |
 0.13.0                                                                              | 1.13.1        | 0.13.1                     | 0.13.2                    | 0.13.0              | 0.13.0               | 0.13.2      | 2.12.0           | n/a     |
 0.12.0                                                                              | 1.12          | 0.12.0                     | 0.12.1                    | 0.12.1              | 0.12.0               | 0.13.2      | 2.10.0           | n/a     |

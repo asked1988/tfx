@@ -39,7 +39,8 @@ from tfx.components.statistics_gen.component import StatisticsGen
 from tfx.components.trainer.component import Trainer
 from tfx.components.transform.component import Transform
 from tfx.orchestration import metadata
-from tfx.orchestration.airflow.airflow_runner import AirflowDAGRunner
+from tfx.orchestration import pipeline
+from tfx.orchestration.beam.beam_runner import BeamRunner
 from tfx.proto import evaluator_pb2
 from tfx.proto import pusher_pb2
 from tfx.proto import trainer_pb2
@@ -56,7 +57,7 @@ _taxi_module_file = os.path.join(_taxi_root, 'taxi_utils_slack.py')
 # trained model here.
 _serving_model_dir = os.path.join(_taxi_root, 'serving_model/taxi_slack')
 # Slack channel to push the model notifications to.
-_channel_id = 'my-channel-id'
+_slack_channel_id = 'my-channel-id'
 # Slack token to set up connection.
 _slack_token = os.environ['SLACK_BOT_TOKEN']
 
@@ -84,34 +85,35 @@ def _create_pipeline():
   example_gen = CsvExampleGen(input_base=examples)
 
   # Computes statistics over data for visualization and example validation.
-  statistics_gen = StatisticsGen(input_data=example_gen.outputs.examples)
+  statistics_gen = StatisticsGen(input_data=example_gen.outputs['examples'])
 
   # Generates schema based on statistics files.
-  infer_schema = SchemaGen(stats=statistics_gen.outputs.output)
+  infer_schema = SchemaGen(stats=statistics_gen.outputs['output'])
 
   # Performs anomaly detection based on statistics and data schema.
   validate_stats = ExampleValidator(
-      stats=statistics_gen.outputs.output, schema=infer_schema.outputs.output)
+      stats=statistics_gen.outputs['output'],
+      schema=infer_schema.outputs['output'])
 
   # Performs transformations and feature engineering in training and serving.
   transform = Transform(
-      input_data=example_gen.outputs.examples,
-      schema=infer_schema.outputs.output,
+      input_data=example_gen.outputs['examples'],
+      schema=infer_schema.outputs['output'],
       module_file=_taxi_module_file)
 
   # Uses user-provided Python function that implements a model using TF-Learn.
   trainer = Trainer(
       module_file=_taxi_module_file,
-      transformed_examples=transform.outputs.transformed_examples,
-      schema=infer_schema.outputs.output,
-      transform_output=transform.outputs.transform_output,
+      examples=transform.outputs['transformed_examples'],
+      schema=infer_schema.outputs['output'],
+      transform_output=transform.outputs['transform_output'],
       train_args=trainer_pb2.TrainArgs(num_steps=10000),
       eval_args=trainer_pb2.EvalArgs(num_steps=5000))
 
   # Uses TFMA to compute a evaluation statistics over features of a model.
   model_analyzer = Evaluator(
-      examples=example_gen.outputs.examples,
-      model_exports=trainer.outputs.output,
+      examples=example_gen.outputs['examples'],
+      model_exports=trainer.outputs['output'],
       feature_slicing_spec=evaluator_pb2.FeatureSlicingSpec(specs=[
           evaluator_pb2.SingleSlicingSpec(
               column_for_slicing=['trip_start_hour'])
@@ -119,7 +121,7 @@ def _create_pipeline():
 
   # Performs quality validation of a candidate model (compared to a baseline).
   model_validator = ModelValidator(
-      examples=example_gen.outputs.examples, model=trainer.outputs.output)
+      examples=example_gen.outputs['examples'], model=trainer.outputs['output'])
 
   # This custom component serves as a bridge between pipeline and human model
   # reviewers to enable review-and-push workflow in model development cycle. It
@@ -130,18 +132,18 @@ def _create_pipeline():
   #   * To reject the model, users need to reply the thread sent out by the bot
   #     started by SlackComponent with 'decline' or 'reject'.
   slack_validator = SlackComponent(
-      model_export=trainer.outputs.output,
-      model_blessing=model_validator.outputs.blessing,
+      model_export=trainer.outputs['output'],
+      model_blessing=model_validator.outputs['blessing'],
       slack_token=_slack_token,
-      channel_id=_channel_id,
+      slack_channel_id=_slack_channel_id,
       timeout_sec=3600,
   )
 
   # Checks whether the model passed the validation steps and pushes the model
   # to a file destination if check passed.
   pusher = Pusher(
-      model_export=trainer.outputs.output,
-      model_blessing=slack_validator.outputs.slack_blessing,
+      model_export=trainer.outputs['output'],
+      model_blessing=slack_validator.outputs['slack_blessing'],
       push_destination=pusher_pb2.PushDestination(
           filesystem=pusher_pb2.PushDestination.Filesystem(
               base_directory=_serving_model_dir)))
@@ -159,4 +161,5 @@ def _create_pipeline():
   )
 
 
-pipeline = AirflowDAGRunner(_airflow_config).run(_create_pipeline())
+if __name__ == '__main__':
+  BeamRunner().run(_create_pipeline())

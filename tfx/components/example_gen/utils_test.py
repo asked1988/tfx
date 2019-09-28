@@ -26,7 +26,85 @@ from tfx.proto import example_gen_pb2
 
 class UtilsTest(tf.test.TestCase):
 
-  def test_make_output_split_names(self):
+  def testDictToExample(self):
+    instance_dict = {
+        'int': 10,
+        'float': 5.0,
+        'str': 'abc',
+        'int_list': [1, 2],
+        'float_list': [3.0],
+        'str_list': ['ab', 'cd'],
+        'none': None,
+        'empty_list': [],
+    }
+    example = utils.dict_to_example(instance_dict)
+    self.assertProtoEquals(
+        """
+        features {
+          feature {
+            key: "empty_list"
+            value {
+            }
+          }
+          feature {
+            key: "float"
+            value {
+              float_list {
+                value: 5.0
+              }
+            }
+          }
+          feature {
+            key: "float_list"
+            value {
+              float_list {
+                value: 3.0
+              }
+            }
+          }
+          feature {
+            key: "int"
+            value {
+              int64_list {
+                value: 10
+              }
+            }
+          }
+          feature {
+            key: "int_list"
+            value {
+              int64_list {
+                value: 1
+                value: 2
+              }
+            }
+          }
+          feature {
+            key: "none"
+            value {
+            }
+          }
+          feature {
+            key: "str"
+            value {
+              bytes_list {
+                value: "abc"
+              }
+            }
+          }
+          feature {
+            key: "str_list"
+            value {
+              bytes_list {
+                value: "ab"
+                value: "cd"
+              }
+            }
+          }
+        }
+        """, example)
+
+  def testMakeOutputSplitNames(self):
     split_names = utils.generate_output_split_names(
         input_config=example_gen_pb2.Input(splits=[
             example_gen_pb2.Input.Split(name='train', pattern='train/*'),
@@ -46,7 +124,7 @@ class UtilsTest(tf.test.TestCase):
             ])))
     self.assertListEqual(['train', 'eval'], split_names)
 
-  def test_make_default_output_config(self):
+  def testMakeDefaultOutputConfig(self):
     output_config = utils.make_default_output_config(
         utils.make_default_input_config())
     self.assertEqual(2, len(output_config.split_config.splits))

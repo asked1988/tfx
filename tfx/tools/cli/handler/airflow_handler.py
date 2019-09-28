@@ -21,7 +21,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import click
 import tensorflow as tf
 
@@ -36,120 +35,144 @@ class AirflowHandler(base_handler.BaseHandler):
 
   def __init__(self, flags_dict):
     super(AirflowHandler, self).__init__(flags_dict)
-    self._handler_home_dir = self._get_handler_home()
+    self._handler_home_dir = os.path.join(self._handler_home_dir, 'dags', '')
 
-  # TODO(b/132286477): Update comments after updating methods.
-  def create_pipeline(self, overwrite: bool = False):
-    """Creates pipeline in Airflow."""
-    self._check_pipeline_dsl_path()
-    self._check_dsl_runner()
-    pipeline_args = self._extract_pipeline_args()
+  def create_pipeline(self, overwrite: bool = False) -> None:
+    """Creates pipeline in Airflow.
 
-    # Path to pipeline folder in airflow.
-    handler_pipeline_path = self._get_handler_pipeline_path(
-        pipeline_args[labels.PIPELINE_NAME])
+    Args:
+      overwrite: Set as True to update pipeline.
+    """
+    # Compile pipeline to check if pipeline_args are extracted successfully.
+    pipeline_args = self.compile_pipeline()
 
-    if overwrite:
-      # For update, check if pipeline exists.
-      if not tf.io.gfile.exists(handler_pipeline_path):
-        sys.exit('Pipeline {} does not exist.'
-                 .format(pipeline_args[labels.PIPELINE_NAME]))
-    else:
-      # For create, verify that pipeline does not exist.
-      if tf.io.gfile.exists(handler_pipeline_path):
-        sys.exit('Pipeline {} already exists.'
-                 .format(pipeline_args[labels.PIPELINE_NAME]))
+    pipeline_name = pipeline_args[labels.PIPELINE_NAME]
+
+    self._check_pipeline_existence(pipeline_name, required=overwrite)
 
     self._save_pipeline(pipeline_args)
 
-  def update_pipeline(self):
-    # Set overwrite to true for update to make sure pipeline exists.
+    if overwrite:
+      click.echo('Pipeline "{}" updated successfully.'.format(pipeline_name))
+    else:
+      click.echo('Pipeline "{}" created successfully.'.format(pipeline_name))
+
+  def update_pipeline(self) -> None:
+    """Updates pipeline in Airflow."""
+    # Set overwrite as True to update the pipeline.
     self.create_pipeline(overwrite=True)
 
   def list_pipelines(self) -> None:
     """List all the pipelines in the environment."""
-    dags_folder = os.path.join(self._handler_home_dir, 'dags', '')
-    if not tf.io.gfile.exists(dags_folder):
+    if not tf.io.gfile.exists(self._handler_home_dir):
       click.echo('No pipelines to display.')
       return
-    pipelines_list = tf.io.gfile.listdir(dags_folder)
+
+    pipelines_list = tf.io.gfile.listdir(self._handler_home_dir)
+
     # Print every pipeline name in a new line.
-    click.echo('\n'.join('{}' for _ in range(len(pipelines_list)))
-               .format(*pipelines_list))
+    click.echo('-' * 30)
+    click.echo('\n'.join(pipelines_list))
+    click.echo('-' * 30)
 
   def delete_pipeline(self) -> None:
     """Delete pipeline in Airflow."""
-    # Path to pipeline folder in airflow.
-    handler_pipeline_path = self._get_handler_pipeline_path(
-        self.flags_dict[labels.PIPELINE_NAME])
+    pipeline_name = self.flags_dict[labels.PIPELINE_NAME]
+
+    # Path to pipeline folder.
+    handler_pipeline_path = os.path.join(self._handler_home_dir, pipeline_name,
+                                         '')
 
     # Check if pipeline exists.
-    if not tf.io.gfile.exists(handler_pipeline_path):
-      sys.exit('Pipeline {} does not exist.'
-               .format(self.flags_dict[labels.PIPELINE_NAME]))
+    self._check_pipeline_existence(pipeline_name)
 
     # Delete pipeline folder.
     io_utils.delete_dir(handler_pipeline_path)
+    click.echo('Pipeline "{}" deleted successfully.'.format(pipeline_name))
 
-  def run_pipeline(self) -> None:
-    """Trigger DAG in Airflow."""
-    # Check if pipeline exists.
-    handler_pipeline_path = self._get_handler_pipeline_path(
-        self.flags_dict[labels.PIPELINE_NAME])
-    if not tf.io.gfile.exists(handler_pipeline_path):
-      sys.exit('Pipeline {} does not exist.'
-               .format(self.flags_dict[labels.PIPELINE_NAME]))
-    # Unpause and trigger DAG.
-    subprocess.call(['airflow', 'unpause',
-                     self.flags_dict[labels.PIPELINE_NAME]])
-    subprocess.call(['airflow', 'trigger_dag',
-                     self.flags_dict[labels.PIPELINE_NAME]])
-
-  # TODO(b/132286477): Shift get_handler_home to base_handler later if needed.
-  def _get_handler_home(self) -> Text:
-    """Sets handler home.
+  def compile_pipeline(self) -> Dict[Text, Any]:
+    """Compiles pipeline in Airflow.
 
     Returns:
-      Path to handler home directory.
+      A python dictionary with pipeline details extracted from DSL.
     """
-    handler_home_dir = 'AIRFLOW_HOME'
-    if handler_home_dir in os.environ:
-      return os.environ[handler_home_dir]
-    return os.path.join(os.environ['HOME'], 'airflow', '')
-
-  def _extract_pipeline_args(self) -> Dict[Text, Any]:
-    """Get pipeline args from the DSL."""
-    if os.path.isdir(self.flags_dict[labels.PIPELINE_DSL_PATH]):
-      sys.exit('Provide dsl file path.')
-
-    # Create an environment for subprocess.
-    temp_env = os.environ.copy()
-
-    # Create temp file to store pipeline_args from pipeline dsl.
-    temp_file = tempfile.mkstemp(prefix='cli_tmp_', suffix='_pipeline_args')[1]
-
-    # Store temp_file path in temp_env.
-    temp_env[labels.TFX_JSON_EXPORT_PIPELINE_ARGS_PATH] = temp_file
-
-    # Run dsl with mock environment to store pipeline args in temp_file.
-    subprocess.call(['python', self.flags_dict[labels.PIPELINE_DSL_PATH]],
-                    env=temp_env)
-
-    # Load pipeline_args from temp_file
-    with open(temp_file, 'r') as f:
-      pipeline_args = json.load(f)
-
-    # Delete temp file
-    io_utils.delete_dir(temp_file)
-
+    self._check_pipeline_dsl_path()
+    self._check_dsl_runner()
+    pipeline_args = self._extract_pipeline_args()
+    if not pipeline_args:
+      sys.exit('Unable to compile pipeline. Check your pipeline dsl.')
+    click.echo('Pipeline compiled successfully.')
     return pipeline_args
 
-  def _save_pipeline(self, pipeline_args) -> None:
-    """Creates/updates pipeline folder in the handler directory."""
+  def create_run(self) -> None:
+    """Trigger DAG in Airflow."""
+    pipeline_name = self.flags_dict[labels.PIPELINE_NAME]
 
-    # Path to pipeline folder in airflow.
-    handler_pipeline_path = self._get_handler_pipeline_path(
-        pipeline_args[labels.PIPELINE_NAME])
+    # Check if pipeline exists.
+    self._check_pipeline_existence(pipeline_name)
+
+    # Unpause DAG.
+    self._subprocess_call(['airflow', 'unpause', pipeline_name])
+
+    # Trigger DAG.
+    self._subprocess_call(['airflow', 'trigger_dag', pipeline_name])
+
+    click.echo('Run created for pipeline: ' + pipeline_name)
+
+  def delete_run(self) -> None:
+    """Deletes a run in Airflow."""
+    click.echo('Not supported for Airflow.')
+
+  def terminate_run(self) -> None:
+    """Stops a run in Airflow."""
+    click.echo('Not supported for Airflow.')
+
+  def list_runs(self) -> None:
+    """Lists all runs of a pipeline in Airflow."""
+    # Check if pipeline exists.
+    pipeline_name = self.flags_dict[labels.PIPELINE_NAME]
+    self._check_pipeline_existence(pipeline_name)
+
+    # Get status of all DAG runs.
+    dag_runs_list = str(
+        subprocess.check_output(['airflow', 'list_dag_runs', pipeline_name]))
+
+    # No runs to display.
+    if 'No dag runs for {}'.format(pipeline_name) in dag_runs_list:
+      sys.exit('No pipeline runs for {}'.format(pipeline_name))
+
+    self._subprocess_call(['airflow', 'list_dag_runs', pipeline_name])
+
+  def get_run(self) -> None:
+    """Checks run status in Airflow."""
+    pipeline_name = self.flags_dict[labels.PIPELINE_NAME]
+
+    # Check if pipeline exists.
+    self._check_pipeline_existence(pipeline_name)
+
+    # Get status of all DAG runs.
+    dag_runs_list = str(
+        subprocess.check_output(['airflow', 'list_dag_runs', pipeline_name]))
+
+    lines = dag_runs_list.split('\\n')
+    for line in lines:
+      # The tokens are id, run_id, state, execution_date, state_date
+      tokens = line.split('|')
+      if self.flags_dict[labels.RUN_ID] in line:
+        click.echo('run_id :' + tokens[1])
+        click.echo('state :' + tokens[2])
+        break
+
+  def _save_pipeline(self, pipeline_args: Dict[Text, Any]) -> None:
+    """Creates/updates pipeline folder in the handler directory.
+
+    Args:
+      pipeline_args: Pipeline details obtained from DSL.
+    """
+    # Path to pipeline folder in Airflow.
+    handler_pipeline_path = os.path.join(self._handler_home_dir,
+                                         pipeline_args[labels.PIPELINE_NAME],
+                                         '')
 
     # If updating pipeline, first delete pipeline directory.
     if tf.io.gfile.exists(handler_pipeline_path):
@@ -162,22 +185,8 @@ class AirflowHandler(base_handler.BaseHandler):
       json.dump(pipeline_args, f)
 
     # Copy dsl to pipeline folder
+    pipeline_dsl_path = self.flags_dict[labels.PIPELINE_DSL_PATH]
     io_utils.copy_file(
-        self.flags_dict[labels.PIPELINE_DSL_PATH],
-        os.path.join(
-            handler_pipeline_path,
-            os.path.basename(self.flags_dict[labels.PIPELINE_DSL_PATH])
-            )
-        )
-
-  def _get_handler_pipeline_path(self, pipeline_name) -> Text:
-    """Path to pipeline folder in airflow.
-
-    Args:
-      pipeline_name: name of the pipeline
-
-    Returns:
-      Path to pipeline folder in airflow.
-    """
-    # Path to pipeline folder in airflow.
-    return os.path.join(self._handler_home_dir, 'dags', pipeline_name)
+        pipeline_dsl_path,
+        os.path.join(handler_pipeline_path,
+                     os.path.basename(pipeline_dsl_path)))

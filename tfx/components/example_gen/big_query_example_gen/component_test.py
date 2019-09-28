@@ -24,15 +24,15 @@ from tfx.proto import example_gen_pb2
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
+  def testConstruct(self):
     big_query_example_gen = component.BigQueryExampleGen(query='query')
     self.assertEqual('ExamplesPath',
-                     big_query_example_gen.outputs.examples.type_name)
-    artifact_collection = big_query_example_gen.outputs.examples.get()
+                     big_query_example_gen.outputs['examples'].type_name)
+    artifact_collection = big_query_example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
 
-  def test_construct_with_output_config(self):
+  def testConstructWithOutputConfig(self):
     big_query_example_gen = component.BigQueryExampleGen(
         query='query',
         output_config=example_gen_pb2.Output(
@@ -42,13 +42,13 @@ class ComponentTest(tf.test.TestCase):
                 example_gen_pb2.SplitConfig.Split(name='test', hash_buckets=1)
             ])))
     self.assertEqual('ExamplesPath',
-                     big_query_example_gen.outputs.examples.type_name)
-    artifact_collection = big_query_example_gen.outputs.examples.get()
+                     big_query_example_gen.outputs['examples'].type_name)
+    artifact_collection = big_query_example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
     self.assertEqual('test', artifact_collection[2].split)
 
-  def test_construct_with_input_config(self):
+  def testConstructWithInputConfig(self):
     big_query_example_gen = component.BigQueryExampleGen(
         input_config=example_gen_pb2.Input(splits=[
             example_gen_pb2.Input.Split(name='train', pattern='query1'),
@@ -56,8 +56,8 @@ class ComponentTest(tf.test.TestCase):
             example_gen_pb2.Input.Split(name='test', pattern='query3')
         ]))
     self.assertEqual('ExamplesPath',
-                     big_query_example_gen.outputs.examples.type_name)
-    artifact_collection = big_query_example_gen.outputs.examples.get()
+                     big_query_example_gen.outputs['examples'].type_name)
+    artifact_collection = big_query_example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
     self.assertEqual('test', artifact_collection[2].split)

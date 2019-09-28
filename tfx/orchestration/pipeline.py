@@ -18,15 +18,25 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import collections
 import functools
 import json
 import os
+
+import tensorflow as tf
 
 from typing import List, Optional, Text
 from ml_metadata.proto import metadata_store_pb2
 from tensorflow.python.util import deprecation  # pylint: disable=g-direct-tensorflow-import
 from tfx.components.base import base_component
 from tfx.orchestration import data_types
+from tfx.orchestration import metadata
+
+# Argo's workflow name cannot exceed 63 chars:
+# see https://github.com/argoproj/argo/issues/1324.
+# MySQL's database name cannot exceed 64 chars:
+# https://dev.mysql.com/doc/refman/5.6/en/identifiers.html
+MAX_PIPELINE_NAME_LENGTH = 63
 
 
 @deprecation.deprecated(
@@ -69,7 +79,9 @@ class Pipeline(object):
       properties of the pipeline.
     enable_cache: whether or not cache is enabled for this run.
     metadata_connection_config: the config to connect to ML metadata.
-    additional_pipeline_args: other pipeline args. e.g. beam runner args.
+    beam_pipeline_args: Beam pipeline args for beam jobs within executor.
+      Executor will use beam DirectRunner as Default.
+    additional_pipeline_args: other pipeline args.
   """
 
   def __init__(self,
@@ -79,6 +91,8 @@ class Pipeline(object):
                    metadata_store_pb2.ConnectionConfig] = None,
                components: Optional[List[base_component.BaseComponent]] = None,
                enable_cache: Optional[bool] = False,
+               metadata_db_root: Optional[Text] = None,
+               beam_pipeline_args: Optional[List[Text]] = None,
                **kwargs):
     """Initialize pipeline.
 
@@ -90,12 +104,17 @@ class Pipeline(object):
         backward compatible purpose to be used with deprecated
         PipelineDecorator).
       enable_cache: whether or not cache is enabled for this run.
+      metadata_db_root: Deprecated. the uri to the metadata database root.
+        Deprecated and will be removed in future version. Please use
+        metadata_connection_config instead.
+      beam_pipeline_args: Beam pipeline args for beam jobs within executor.
+        Executor will use beam DirectRunner as Default.
       **kwargs: additional kwargs forwarded as pipeline args.
-        - beam_pipeline_args: Beam pipeline args for beam jobs within executor.
-            Executor will use beam DirectRunner as Default.
     """
-    # TODO(ruoyu): Deprecate pipeline args once finish migration to
-    # go/tfx-oss-artifact-passing
+    if len(pipeline_name) > MAX_PIPELINE_NAME_LENGTH:
+      raise ValueError('pipeline name %s exceeds maximum allowed lenght' %
+                       pipeline_name)
+    # TODO(b/138406006): Deprecate pipeline args after 0.14 release.
     self.pipeline_args = dict(kwargs)
     self.pipeline_args.update({
         'pipeline_name': pipeline_name,
@@ -105,8 +124,34 @@ class Pipeline(object):
     self.pipeline_info = data_types.PipelineInfo(
         pipeline_name=pipeline_name, pipeline_root=pipeline_root)
     self.enable_cache = enable_cache
-    self.metadata_connection_config = metadata_connection_config
-    self.additional_pipeline_args = kwargs or {}
+    if metadata_connection_config:
+      self.metadata_connection_config = metadata_connection_config
+      assert not metadata_db_root, ('At most one of metadata_connection_config '
+                                    'and metadata_db_root should be set')
+    else:
+      # TODO(b/138406006): Drop metadata_db_root support after 0.14 release.
+      # We also need to make metadata_connection_config required.
+      tf.logging.info(
+          'metadata_db_root is deprecated, metadata_connection_config will be required in next release'
+      )
+      if metadata_db_root:
+        self.metadata_connection_config = metadata.sqlite_metadata_connection_config(
+            metadata_db_root)
+      else:
+        self.metadata_connection_config = None
+
+    self.beam_pipeline_args = beam_pipeline_args or []
+
+    self.additional_pipeline_args = self.pipeline_args.get(
+        'additional_pipeline_args', {})
+
+    # TODO(jyzhao): deprecate beam_pipeline_args of additional_pipeline_args.
+    if 'beam_pipeline_args' in self.additional_pipeline_args:
+      tf.logging.warning(
+          'Please use the top level beam_pipeline_args instead of the one in additional_pipeline_args.'
+      )
+      self.beam_pipeline_args = self.additional_pipeline_args[
+          'beam_pipeline_args']
 
     # Store pipeline_args in a json file only when temp file exists.
     if 'TFX_JSON_EXPORT_PIPELINE_ARGS_PATH' in os.environ:
@@ -126,9 +171,15 @@ class Pipeline(object):
   def components(self, components: List[base_component.BaseComponent]):
     deduped_components = set(components)
     producer_map = {}
+    instances_per_component_type = collections.defaultdict(set)
 
     # Fills in producer map.
     for component in deduped_components:
+      # Guarantees every component of a component type has unique component_id.
+      if component.id in instances_per_component_type[component.type]:
+        raise RuntimeError('Duplicated component_id %s for component type %s' %
+                           (component.id, component.type))
+      instances_per_component_type[component.type].add(component.id)
       for key, output_channel in component.outputs.get_all().items():
         assert not producer_map.get(
             output_channel), '{} produced more than once'.format(output_channel)
@@ -137,7 +188,7 @@ class Pipeline(object):
         for artifact in output_channel.get():
           artifact.name = key
           artifact.pipeline_name = self.pipeline_info.pipeline_name
-          artifact.producer_component = component.component_id
+          artifact.producer_component = component.id
 
     # Connects nodes based on producer map.
     for component in deduped_components:
@@ -148,6 +199,7 @@ class Pipeline(object):
 
     self._components = []
     visited = set()
+
     # Finds the nodes with indegree 0.
     current_layer = [c for c in deduped_components if not c.upstream_nodes]
     # Sorts component in topological order.

@@ -27,16 +27,17 @@ from tfx.utils import path_utils
 class PathUtilsTest(tf.test.TestCase):
 
   def setUp(self):
+    super(PathUtilsTest, self).setUp()
     # Create folders based on current Trainer output model directory.
     self._output_uri = os.path.join(self.get_temp_dir(), 'model_dir')
     self._eval_model_path = os.path.join(self._output_uri, 'eval_model_dir',
                                          'MODEL')
-    tf.gfile.MakeDirs(self._eval_model_path)
+    tf.io.gfile.makedirs(self._eval_model_path)
     self._serving_model_path = os.path.join(
         self._output_uri, 'serving_model_dir', 'export', 'taxi', 'MODEL')
-    tf.gfile.MakeDirs(self._serving_model_path)
+    tf.io.gfile.makedirs(self._serving_model_path)
 
-  def test_model_path(self):
+  def testModelPath(self):
     # Test retrieving model folder.
     self.assertEqual(self._eval_model_path,
                      path_utils.eval_model_path(self._output_uri))

@@ -18,13 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from google.protobuf import any_pb2
+from google.protobuf import json_format
 from tfx.components.base import base_driver
+from tfx.components.base import executor_spec
 from tfx.components.example_gen import base_example_gen_executor
 from tfx.components.example_gen import component
 from tfx.components.example_gen import driver
 from tfx.proto import example_gen_pb2
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class TestExampleGenExecutor(base_example_gen_executor.BaseExampleGenExecutor):
@@ -35,106 +38,121 @@ class TestExampleGenExecutor(base_example_gen_executor.BaseExampleGenExecutor):
 
 class TestQueryBasedExampleGenComponent(component._QueryBasedExampleGen):
 
-  EXECUTOR_CLASS = TestExampleGenExecutor
+  EXECUTOR_SPEC = executor_spec.ExecutorClassSpec(TestExampleGenExecutor)
 
   def __init__(self,
                input_config,
                output_config=None,
-               name=None,
-               example_artifacts=None):
+               example_artifacts=None,
+               instance_name=None):
     super(TestQueryBasedExampleGenComponent, self).__init__(
         input_config=input_config,
         output_config=output_config,
-        component_name='TestQueryBasedExampleGenComponent',
         example_artifacts=example_artifacts,
-        name=name)
+        instance_name=instance_name)
 
 
 class TestFileBasedExampleGenComponent(component.FileBasedExampleGen):
 
-  EXECUTOR_CLASS = TestExampleGenExecutor
+  EXECUTOR_SPEC = executor_spec.ExecutorClassSpec(TestExampleGenExecutor)
 
   def __init__(self,
                input_base,
                input_config=None,
                output_config=None,
-               name=None,
-               example_artifacts=None):
+               example_artifacts=None,
+               instance_name=None):
     super(TestFileBasedExampleGenComponent, self).__init__(
         input_base=input_base,
         input_config=input_config,
         output_config=output_config,
-        component_name='TestFileBasedExampleGenComponent',
         example_artifacts=example_artifacts,
-        name=name)
+        instance_name=instance_name)
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct_subclass_query_based(self):
+  def testConstructSubclassQueryBased(self):
     example_gen = TestQueryBasedExampleGenComponent(
         input_config=example_gen_pb2.Input(splits=[
             example_gen_pb2.Input.Split(name='single', pattern='query'),
         ]))
     self.assertEqual({}, example_gen.inputs.get_all())
     self.assertEqual(base_driver.BaseDriver, example_gen.driver_class)
-    self.assertEqual('ExamplesPath', example_gen.outputs.examples.type_name)
-    artifact_collection = example_gen.outputs.examples.get()
+    self.assertEqual('ExamplesPath', example_gen.outputs['examples'].type_name)
+    self.assertIsNone(example_gen.exec_properties.get('custom_config'))
+    artifact_collection = example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
 
-  def test_construct_subclass_file_based(self):
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+  def testConstructSubclassFileBased(self):
+    input_base = standard_artifacts.ExternalArtifact()
     example_gen = TestFileBasedExampleGenComponent(
-        input_base=channel.as_channel([input_base]))
+        input_base=channel_utils.as_channel([input_base]))
     self.assertIn('input_base', example_gen.inputs.get_all())
     self.assertEqual(driver.Driver, example_gen.driver_class)
-    self.assertEqual('ExamplesPath', example_gen.outputs.examples.type_name)
-    artifact_collection = example_gen.outputs.examples.get()
+    self.assertEqual('ExamplesPath', example_gen.outputs['examples'].type_name)
+    self.assertIsNone(example_gen.exec_properties.get('custom_config'))
+    artifact_collection = example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
 
-  def test_construct_custom_executor(self):
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+  def testConstructCustomExecutor(self):
+    input_base = standard_artifacts.ExternalArtifact()
     example_gen = component.FileBasedExampleGen(
-        input_base=channel.as_channel([input_base]),
-        executor_class=TestExampleGenExecutor)
+        input_base=channel_utils.as_channel([input_base]),
+        custom_executor_spec=executor_spec.ExecutorClassSpec(
+            TestExampleGenExecutor))
     self.assertEqual(driver.Driver, example_gen.driver_class)
-    self.assertEqual('ExamplesPath', example_gen.outputs.examples.type_name)
-    artifact_collection = example_gen.outputs.examples.get()
+    self.assertEqual('ExamplesPath', example_gen.outputs['examples'].type_name)
+    artifact_collection = example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
 
-  def test_construct_with_output_config(self):
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+  def testConstructWithOutputConfig(self):
+    input_base = standard_artifacts.ExternalArtifact()
     example_gen = TestFileBasedExampleGenComponent(
-        input_base=channel.as_channel([input_base]),
+        input_base=channel_utils.as_channel([input_base]),
         output_config=example_gen_pb2.Output(
             split_config=example_gen_pb2.SplitConfig(splits=[
                 example_gen_pb2.SplitConfig.Split(name='train', hash_buckets=2),
                 example_gen_pb2.SplitConfig.Split(name='eval', hash_buckets=1),
                 example_gen_pb2.SplitConfig.Split(name='test', hash_buckets=1)
             ])))
-    self.assertEqual('ExamplesPath', example_gen.outputs.examples.type_name)
-    artifact_collection = example_gen.outputs.examples.get()
+    self.assertEqual('ExamplesPath', example_gen.outputs['examples'].type_name)
+    artifact_collection = example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
     self.assertEqual('test', artifact_collection[2].split)
 
-  def test_construct_with_input_config(self):
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+  def testConstructWithInputConfig(self):
+    input_base = standard_artifacts.ExternalArtifact()
     example_gen = TestFileBasedExampleGenComponent(
-        input_base=channel.as_channel([input_base]),
+        input_base=channel_utils.as_channel([input_base]),
         input_config=example_gen_pb2.Input(splits=[
             example_gen_pb2.Input.Split(name='train', pattern='train/*'),
             example_gen_pb2.Input.Split(name='eval', pattern='eval/*'),
             example_gen_pb2.Input.Split(name='test', pattern='test/*')
         ]))
-    self.assertEqual('ExamplesPath', example_gen.outputs.examples.type_name)
-    artifact_collection = example_gen.outputs.examples.get()
+    self.assertEqual('ExamplesPath', example_gen.outputs['examples'].type_name)
+    artifact_collection = example_gen.outputs['examples'].get()
     self.assertEqual('train', artifact_collection[0].split)
     self.assertEqual('eval', artifact_collection[1].split)
     self.assertEqual('test', artifact_collection[2].split)
+
+  def testConstructWithCustomConfig(self):
+    input_base = standard_artifacts.ExternalArtifact()
+    custom_config = example_gen_pb2.CustomConfig(custom_config=any_pb2.Any())
+    example_gen = component.FileBasedExampleGen(
+        input_base=channel_utils.as_channel([input_base]),
+        custom_config=custom_config,
+        custom_executor_spec=executor_spec.ExecutorClassSpec(
+            TestExampleGenExecutor))
+
+    stored_custom_config = example_gen_pb2.CustomConfig()
+    json_format.Parse(example_gen.exec_properties['custom_config'],
+                      stored_custom_config)
+    self.assertEqual(custom_config, stored_custom_config)
 
 
 if __name__ == '__main__':

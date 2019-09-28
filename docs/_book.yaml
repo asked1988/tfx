@@ -17,15 +17,13 @@ upper_tabs:
     - name: "Guide"
       contents:
       - include: /tfx/guide/_toc.yaml
-    # - name: "Examples"
-    #   contents:
-    #   - title: "Examples"
-    #     path: /tfx/examples/
     - name: API
       skip_translation: true
       contents:
       - title: TFX API
         path: /tfx/api_docs/
+      - heading: TFX
+      - include: /tfx/api_docs/python/_toc.yaml
       - heading: Data Validation
       - include: /tfx/data_validation/api_docs/python/_toc.yaml
       - heading: Transform

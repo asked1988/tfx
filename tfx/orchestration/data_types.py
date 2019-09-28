@@ -16,18 +16,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Any, Dict, List, Optional, Text
+from typing import Any, Dict, List, Optional, Text, Type, Union
 
-from tfx.utils import types
+from tfx import types
+from tfx.utils import json_utils
 
 
 class ExecutionDecision(object):
   """ExecutionDecision records how executor should perform next execution.
 
   Attributes:
-    input_dict: Updated key -> TfxArtifact for inputs that will be used by
+    input_dict: Updated key -> types.Artifact for inputs that will be used by
       actual execution.
-    output_dict: Updated key -> TfxArtifact for outputs that will be used by
+    output_dict: Updated key -> types.Artifact for outputs that will be used by
       actual execution.
     exec_properties: Updated dict of other execution properties that will be
       used by actual execution.
@@ -35,31 +36,17 @@ class ExecutionDecision(object):
     use_cached_results: Whether or not to use a cached result.
   """
 
-  def __init__(
-      self,
-      input_dict: Dict[Text, List[types.TfxArtifact]],
-      output_dict: Dict[Text, List[types.TfxArtifact]],
-      exec_properties: Dict[Text, Any],
-      # TODO(ruoyu): Make this required once finish Airflow migration.
-      execution_id: Optional[int] = None,
-      use_cached_results: Optional[bool] = False):
+  def __init__(self,
+               input_dict: Dict[Text, List[types.Artifact]],
+               output_dict: Dict[Text, List[types.Artifact]],
+               exec_properties: Dict[Text, Any],
+               execution_id: int = None,
+               use_cached_results: Optional[bool] = False):
     self.input_dict = input_dict
     self.output_dict = output_dict
     self.exec_properties = exec_properties
     self.execution_id = execution_id
     self.use_cached_results = use_cached_results
-
-  # TODO(ruoyu): Deprecate this in favor of use_cached_results once finishing
-  # migration to go/tfx-oss-artifact-passing.
-  @property
-  def execution_needed(self) -> bool:
-    """Indicates whether a new execution is needed.
-
-    Returns:
-      true if execution_id exists
-      false if execution_id does not exist
-    """
-    return self.execution_id is not None
 
 
 class DriverArgs(object):
@@ -67,10 +54,16 @@ class DriverArgs(object):
 
   Attributes:
     enable_cache: whether cache is enabled in current execution.
+    interactive_resolution: whether to skip MLMD channel artifact resolution, if
+      artifacts are already resolved for a channel when running in interactive
+      mode.
   """
 
-  def __init__(self, enable_cache: bool):
+  def __init__(self,
+               enable_cache: bool = True,
+               interactive_resolution: bool = False):
     self.enable_cache = enable_cache
+    self.interactive_resolution = interactive_resolution
 
 
 class PipelineInfo(object):
@@ -92,6 +85,11 @@ class PipelineInfo(object):
     self.pipeline_root = pipeline_root
     self.run_id = run_id
 
+  @property
+  def run_context_name(self) -> Text:
+    """Context name for current run."""
+    return '{}.{}'.format(self.pipeline_name, self.run_id)
+
 
 class ComponentInfo(object):
   """Component info.
@@ -105,3 +103,35 @@ class ComponentInfo(object):
   def __init__(self, component_type: Text, component_id: Text):
     self.component_type = component_type
     self.component_id = component_id
+
+
+class RuntimeParameter(json_utils.Jsonable):
+  """Runtime parameter.
+
+  Attributes:
+    name: The name of the runtime parameter
+    default: Default value for runtime params when it's not explicitly
+      specified.
+    ptype: The type of the runtime parameter
+    description: Description of the usage of the parameter
+  """
+
+  def __init__(
+      self,
+      name: Text,
+      default: Optional[Union[int, float, bool, Text]] = None,
+      ptype: Optional[Type] = None,  # pylint: disable=g-bare-generic
+      description: Optional[Text] = None):
+    if ptype and ptype not in [int, float, bool, Text]:
+      raise RuntimeError('Only str and scalar runtime parameters are supported')
+    if (default and ptype) and not isinstance(default, ptype):
+      raise TypeError('Default value must be consistent with specified ptype')
+    self.name = name
+    self.default = default
+    self.ptype = ptype
+    self.description = description
+
+  def __repr__(self):
+    return ('RuntimeParam:\n  name: %s,\n  default: %s,\n  ptype: %s,\n  '
+            'description: %s') % (self.name, self.default, self.ptype,
+                                  self.description)

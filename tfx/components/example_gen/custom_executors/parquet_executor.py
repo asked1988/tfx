@@ -19,51 +19,12 @@ from __future__ import print_function
 
 import os
 import apache_beam as beam
-import six
 import tensorflow as tf
 from typing import Any, Dict, List, Text
+from tfx import types
 from tfx.components.example_gen import base_example_gen_executor
-from tfx.utils import types
-
-
-def _dict_to_example(instance: Dict[Text, Any]) -> tf.train.Example:
-  """Decoded parquet to tf example."""
-  # Note that when convert to tf.Feature, Parquet data might lose precision.
-  feature = {}
-  for key, value in instance.items():
-    # TODO(jyzhao): support more types.
-    if value is None:
-      feature[key] = tf.train.Feature()
-    elif isinstance(value, six.integer_types):
-      feature[key] = tf.train.Feature(
-          int64_list=tf.train.Int64List(value=[value]))
-    elif isinstance(value, float):
-      feature[key] = tf.train.Feature(
-          float_list=tf.train.FloatList(value=[value]))
-    elif isinstance(value, six.text_type) or isinstance(value, str):
-      feature[key] = tf.train.Feature(
-          bytes_list=tf.train.BytesList(value=[value.encode('utf-8')]))
-    elif isinstance(value, list):
-      if not value:
-        feature[key] = tf.train.Feature()
-      elif isinstance(value[0], six.integer_types):
-        feature[key] = tf.train.Feature(
-            int64_list=tf.train.Int64List(value=value))
-      elif isinstance(value[0], float):
-        feature[key] = tf.train.Feature(
-            float_list=tf.train.FloatList(value=value))
-      elif isinstance(value[0], six.text_type) or isinstance(value[0], str):
-        feature[key] = tf.train.Feature(
-            bytes_list=tf.train.BytesList(
-                value=[v.encode('utf-8') for v in value]))
-      else:
-        raise RuntimeError(
-            'Parquet column type `list of {}` is not supported.'.format(
-                type(value[0])))
-    else:
-      raise RuntimeError('Parquet column type {} is not supported.'.format(
-          type(value)))
-  return tf.train.Example(features=tf.train.Features(feature=feature))
+from tfx.components.example_gen.utils import dict_to_example
+from tfx.types import artifact_utils
 
 
 @beam.ptransform_fn
@@ -71,7 +32,7 @@ def _dict_to_example(instance: Dict[Text, Any]) -> tf.train.Example:
 @beam.typehints.with_output_types(tf.train.Example)
 def _ParquetToExample(  # pylint: disable=invalid-name
     pipeline: beam.Pipeline,
-    input_dict: Dict[Text, List[types.TfxArtifact]],
+    input_dict: Dict[Text, List[types.Artifact]],
     exec_properties: Dict[Text, Any],  # pylint: disable=unused-argument
     split_pattern: Text) -> beam.pvalue.PCollection:
   """Read Parquet files and transform to TF examples.
@@ -89,7 +50,7 @@ def _ParquetToExample(  # pylint: disable=invalid-name
   Returns:
     PCollection of TF examples.
   """
-  input_base_uri = types.get_single_uri(input_dict['input_base'])
+  input_base_uri = artifact_utils.get_single_uri(input_dict['input_base'])
   parquet_pattern = os.path.join(input_base_uri, split_pattern)
   tf.logging.info(
       'Processing input parquet data {} to TFExample.'.format(parquet_pattern))
@@ -97,7 +58,7 @@ def _ParquetToExample(  # pylint: disable=invalid-name
   return (pipeline
           # TODO(jyzhao): support per column read by input_config.
           | 'ReadFromParquet' >> beam.io.ReadFromParquet(parquet_pattern)
-          | 'ToTFExample' >> beam.Map(_dict_to_example))
+          | 'ToTFExample' >> beam.Map(dict_to_example))
 
 
 class Executor(base_example_gen_executor.BaseExampleGenExecutor):
@@ -114,7 +75,7 @@ class Executor(base_example_gen_executor.BaseExampleGenExecutor):
       Missing value will be converted to empty tf.train.Feature().
       Parquet data might lose precision, e.g., int96.
 
-    For details, check the _dict_to_example function above.
+    For details, check the dict_to_example function in example_gen.utils.
 
 
   Example usage:

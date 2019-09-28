@@ -1,4 +1,4 @@
-# SchemaGen
+# The SchemaGen TFX Pipeline Component
 
 Some TFX components use a description of your input data called a *schema*. The
 schema is an instance of
@@ -70,5 +70,5 @@ from tfx import components
 
 ...
 
-infer_schema = components.SchemaGen(stats=compute_training_stats.outputs.output)
+infer_schema = components.SchemaGen(stats=compute_training_stats.outputs['output'])
 ```

@@ -21,21 +21,22 @@ import copy
 import os
 import mock
 import tensorflow as tf
+from tfx import types
 from tfx.components.base import base_driver
 from tfx.orchestration import data_types
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
 
 
 class BaseDriverTest(tf.test.TestCase):
 
   def setUp(self):
+    super(BaseDriverTest, self).setUp()
     self._mock_metadata = tf.test.mock.Mock()
     self._input_dict = {
         'input_data':
-            channel.Channel(
+            types.Channel(
                 type_name='input_data',
-                artifacts=[types.TfxArtifact(type_name='input_data')])
+                artifacts=[types.Artifact(type_name='input_data')])
     }
     input_dir = os.path.join(
         os.environ.get('TEST_TMP_DIR', self.get_temp_dir()),
@@ -46,18 +47,18 @@ class BaseDriverTest(tf.test.TestCase):
         artifact.id = index + 1
         uri = os.path.join(input_dir, key, str(artifact.id), '')
         artifact.uri = uri
-        tf.gfile.MakeDirs(uri)
+        tf.io.gfile.makedirs(uri)
     self._output_dict = {
         'output_data':
-            channel.Channel(
+            types.Channel(
                 type_name='output_data',
                 artifacts=[
-                    types.TfxArtifact(type_name='output_data', split='split')
+                    types.Artifact(type_name='output_data', split='split')
                 ])
     }
-    self._input_artifacts = channel.unwrap_channel_dict(self._input_dict)
+    self._input_artifacts = channel_utils.unwrap_channel_dict(self._input_dict)
     self._output_artifacts = {
-        'output_data': [types.TfxArtifact(type_name='OutputType')],
+        'output_data': [types.Artifact(type_name='OutputType')],
     }
     self._exec_properties = {
         'key': 'value',
@@ -67,22 +68,21 @@ class BaseDriverTest(tf.test.TestCase):
   @mock.patch(
       'tfx.components.base.base_driver._verify_input_artifacts'
   )
-  def test_pre_execution_new_execution(self, mock_verify_input_artifacts_fn):
+  def testPreExecutionNewExecution(self, mock_verify_input_artifacts_fn):
     input_dict = {
         'input_a':
-            channel.Channel(
+            types.Channel(
                 type_name='input_a',
-                artifacts=[types.TfxArtifact(type_name='input_a')])
+                artifacts=[types.Artifact(type_name='input_a')])
     }
     output_dict = {
         'output_a':
-            channel.Channel(
+            types.Channel(
                 type_name='output_a',
-                artifacts=[
-                    types.TfxArtifact(type_name='output_a', split='split')
-                ])
+                artifacts=[types.Artifact(type_name='output_a', split='split')])
     }
     execution_id = 1
+    context_id = 123
     exec_properties = copy.deepcopy(self._exec_properties)
     driver_args = data_types.DriverArgs(enable_cache=True)
     pipeline_info = data_types.PipelineInfo(
@@ -95,6 +95,9 @@ class BaseDriverTest(tf.test.TestCase):
         input_dict['input_a'].get())
     self._mock_metadata.register_execution.side_effect = [execution_id]
     self._mock_metadata.previous_execution.side_effect = [None]
+    self._mock_metadata.register_run_context_if_not_exists.side_effect = [
+        context_id
+    ]
 
     driver = base_driver.BaseDriver(metadata_handler=self._mock_metadata)
     execution_decision = driver.pre_execution(
@@ -115,22 +118,21 @@ class BaseDriverTest(tf.test.TestCase):
   @mock.patch(
       'tfx.components.base.base_driver._verify_input_artifacts'
   )
-  def test_pre_execution_cached(self, mock_verify_input_artifacts_fn):
+  def testPreExecutionCached(self, mock_verify_input_artifacts_fn):
     input_dict = {
         'input_a':
-            channel.Channel(
+            types.Channel(
                 type_name='input_a',
-                artifacts=[types.TfxArtifact(type_name='input_a')])
+                artifacts=[types.Artifact(type_name='input_a')])
     }
     output_dict = {
         'output_a':
-            channel.Channel(
+            types.Channel(
                 type_name='output_a',
-                artifacts=[
-                    types.TfxArtifact(type_name='output_a', split='split')
-                ])
+                artifacts=[types.Artifact(type_name='output_a', split='split')])
     }
     execution_id = 1
+    context_id = 123
     exec_properties = copy.deepcopy(self._exec_properties)
     driver_args = data_types.DriverArgs(enable_cache=True)
     pipeline_info = data_types.PipelineInfo(
@@ -143,6 +145,9 @@ class BaseDriverTest(tf.test.TestCase):
         input_dict['input_a'].get())
     self._mock_metadata.register_execution.side_effect = [execution_id]
     self._mock_metadata.previous_execution.side_effect = [2]
+    self._mock_metadata.register_run_context_if_not_exists.side_effect = [
+        context_id
+    ]
     self._mock_metadata.fetch_previous_result_artifacts.side_effect = [
         self._output_artifacts
     ]
@@ -161,13 +166,13 @@ class BaseDriverTest(tf.test.TestCase):
     self.assertItemsEqual(execution_decision.output_dict,
                           self._output_artifacts)
 
-  def test_verify_input_artifacts_ok(self):
+  def testVerifyInputArtifactsOk(self):
     base_driver._verify_input_artifacts(self._input_artifacts)
 
-  def test_verify_input_artifacts_not_exists(self):
+  def testVerifyInputArtifactsNotExists(self):
     with self.assertRaises(RuntimeError):
       base_driver._verify_input_artifacts(
-          {'artifact': [types.TfxArtifact(type_name='input_data')]})
+          {'artifact': [types.Artifact(type_name='input_data')]})
 
 
 if __name__ == '__main__':

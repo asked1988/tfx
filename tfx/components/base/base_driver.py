@@ -21,18 +21,18 @@ import tensorflow as tf
 
 from typing import Any, Dict, List, Text
 
+from tfx import types
 from tfx.orchestration import data_types
 from tfx.orchestration import metadata
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
 
 
-def _verify_input_artifacts(artifacts_dict: Dict[Text, List[types.TfxArtifact]]
-                           ) -> None:
+def _verify_input_artifacts(
+    artifacts_dict: Dict[Text, List[types.Artifact]]) -> None:
   """Verify that all artifacts have existing uri.
 
   Args:
-    artifacts_dict: key -> TfxArtifact for inputs.
+    artifacts_dict: key -> types.Artifact for inputs.
 
   Raises:
     RuntimeError: if any input as an empty or non-existing uri.
@@ -45,7 +45,7 @@ def _verify_input_artifacts(artifacts_dict: Dict[Text, List[types.TfxArtifact]]
         raise RuntimeError('Artifact uri %s is missing' % artifact.uri)
 
 
-def _generate_output_uri(artifact: types.TfxArtifact, base_output_dir: Text,
+def _generate_output_uri(artifact: types.Artifact, base_output_dir: Text,
                          name: Text, execution_id: int) -> Text:
   """Generate uri for output artifact."""
 
@@ -61,7 +61,7 @@ def _generate_output_uri(artifact: types.TfxArtifact, base_output_dir: Text,
     # TODO(zhitaoli): Consider refactoring this out into something
     # which can handle permission bits.
     tf.logging.info('Creating output artifact uri %s as directory', uri)
-    tf.gfile.MakeDirs(uri)
+    tf.io.gfile.makedirs(uri)
 
   return uri
 
@@ -79,8 +79,8 @@ class BaseDriver(object):
   def __init__(self, metadata_handler: metadata.Metadata):
     self._metadata_handler = metadata_handler
 
-  def _log_properties(self, input_dict: Dict[Text, List[types.TfxArtifact]],
-                      output_dict: Dict[Text, List[types.TfxArtifact]],
+  def _log_properties(self, input_dict: Dict[Text, List[types.Artifact]],
+                      output_dict: Dict[Text, List[types.Artifact]],
                       exec_properties: Dict[Text, Any]):
     """Log inputs, outputs, and executor properties in a standard format."""
     tf.logging.info('Starting %s driver.', self.__class__.__name__)
@@ -92,10 +92,11 @@ class BaseDriver(object):
 
   def resolve_input_artifacts(
       self,
-      input_dict: Dict[Text, channel.Channel],
+      input_dict: Dict[Text, types.Channel],
       exec_properties: Dict[Text, Any],  # pylint: disable=unused-argument
+      driver_args: data_types.DriverArgs,
       pipeline_info: data_types.PipelineInfo,
-  ) -> Dict[Text, List[types.TfxArtifact]]:
+  ) -> Dict[Text, List[types.Artifact]]:
     """Resolve input artifacts from metadata.
 
     Subclasses might override this function for customized artifact properties
@@ -107,6 +108,8 @@ class BaseDriver(object):
       input_dict: key -> Channel mapping for inputs generated in logical
         pipeline.
       exec_properties: Dict of other execution properties, e.g., configs.
+      driver_args: An instance of data_types.DriverArgs with driver
+        configuration properties.
       pipeline_info: An instance of data_types.PipelineInfo, holding pipeline
         related properties including component_type and component_id.
 
@@ -115,11 +118,25 @@ class BaseDriver(object):
 
     Raises:
       RuntimeError: for Channels that do not contain any artifact. This will be
-      reverted once we support Channel-based input resolution.
+        reverted once we support Channel-based input resolution.
+      ValueError: if in interactive mode, the given input channels have not been
+        resolved.
     """
     result = {}
     for name, input_channel in input_dict.items():
       artifacts = list(input_channel.get())
+      if driver_args.interactive_resolution:
+        for artifact in artifacts:
+          # Note: when not initialized, artifact.uri is '' and artifact.id is 0.
+          if not artifact.uri or not artifact.id:
+            raise ValueError((
+                'Unresolved input channel %r for input %r was passed in '
+                'interactive mode. When running in interactive mode, upstream '
+                'components must first be run with '
+                '`interactive_context.run(component)` before their outputs can '
+                'be used in downstream components.') % (artifact, name))
+        result[name] = artifacts
+        continue
       # TODO(ruoyu): Remove once channel-based input resolution is supported.
       if not artifacts:
         raise RuntimeError('Channel-based input resolution is not supported.')
@@ -150,13 +167,13 @@ class BaseDriver(object):
 
   def _prepare_output_artifacts(
       self,
-      output_dict: Dict[Text, channel.Channel],
+      output_dict: Dict[Text, types.Channel],
       execution_id: int,
       pipeline_info: data_types.PipelineInfo,
       component_info: data_types.ComponentInfo,
-  ) -> Dict[Text, List[types.TfxArtifact]]:
+  ) -> Dict[Text, List[types.Artifact]]:
     """Prepare output artifacts by assigning uris to each artifact."""
-    result = channel.unwrap_channel_dict(output_dict)
+    result = channel_utils.unwrap_channel_dict(output_dict)
     base_output_dir = os.path.join(pipeline_info.pipeline_root,
                                    component_info.component_id)
     for name, output_list in result.items():
@@ -165,18 +182,18 @@ class BaseDriver(object):
                                             execution_id)
     return result
 
-  def _fetch_cached_artifacts(self, output_dict: Dict[Text, channel.Channel],
-                              cached_execution_id: int
-                             ) -> Dict[Text, List[types.TfxArtifact]]:
+  def _fetch_cached_artifacts(
+      self, output_dict: Dict[Text, types.Channel],
+      cached_execution_id: int) -> Dict[Text, List[types.Artifact]]:
     """Fetch cached output artifacts."""
-    output_artifacts_dict = channel.unwrap_channel_dict(output_dict)
+    output_artifacts_dict = channel_utils.unwrap_channel_dict(output_dict)
     return self._metadata_handler.fetch_previous_result_artifacts(
         output_artifacts_dict, cached_execution_id)
 
   def pre_execution(
       self,
-      input_dict: Dict[Text, channel.Channel],
-      output_dict: Dict[Text, channel.Channel],
+      input_dict: Dict[Text, types.Channel],
+      output_dict: Dict[Text, types.Channel],
       exec_properties: Dict[Text, Any],
       driver_args: data_types.DriverArgs,
       pipeline_info: data_types.PipelineInfo,
@@ -208,17 +225,20 @@ class BaseDriver(object):
     Raises:
       RuntimeError: if any input as an empty uri.
     """
+    run_context_id = self._metadata_handler.register_run_context_if_not_exists(
+        pipeline_info)
 
     # Step 1. Fetch inputs from metadata.
     input_artifacts = self.resolve_input_artifacts(input_dict, exec_properties,
-                                                   pipeline_info)
+                                                   driver_args, pipeline_info)
     _verify_input_artifacts(artifacts_dict=input_artifacts)
     tf.logging.info('Resolved input artifacts are: %s' % input_artifacts)
     # Step 2. Register execution in metadata.
     execution_id = self._metadata_handler.register_execution(
         exec_properties=exec_properties,
         pipeline_info=pipeline_info,
-        component_info=component_info)
+        component_info=component_info,
+        run_context_id=run_context_id)
     tf.logging.info('Execution id of the upcoming component execution is %s',
                     execution_id)
     output_artifacts = {}

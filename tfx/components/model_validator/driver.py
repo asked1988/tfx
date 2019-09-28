@@ -28,22 +28,19 @@ class Driver(base_driver.BaseDriver):
 
   def _fetch_last_blessed_model(
       self,
-      component_unique_name: Text,
+      component_id: Text,
   ) -> Tuple[Optional[Text], Optional[int]]:
     """Fetch last blessed model in metadata based on span."""
-    # TODO(b/122970393): This is a temporary solution since ML metadata not
-    # support get artifacts by type.
     previous_blessed_models = []
-    for a in self._metadata_handler.get_all_artifacts():
-      if (a.properties['type_name'].string_value == 'ModelBlessingPath' and
-          a.custom_properties['blessed'].int_value == 1 and
-          a.custom_properties['component_unique_name'].string_value ==
-          component_unique_name):
+    for a in self._metadata_handler.get_artifacts_by_type('ModelBlessingPath'):
+      if (a.custom_properties['blessed'].int_value == 1 and
+          a.custom_properties['component_id'].string_value == component_id):
         previous_blessed_models.append(a)
 
     if previous_blessed_models:
+      # TODO(b/138845899): consider use span instead of id.
       last_blessed_model = max(
-          previous_blessed_models, key=lambda m: m.properties['span'].int_value)
+          previous_blessed_models, key=lambda artifact: artifact.id)
       return (
           last_blessed_model.custom_properties['current_model'].string_value,
           last_blessed_model.custom_properties['current_model_id'].int_value)
@@ -59,6 +56,7 @@ class Driver(base_driver.BaseDriver):
     (exec_properties['blessed_model'],
      exec_properties['blessed_model_id']) = self._fetch_last_blessed_model(
          component_info.component_id)
+    exec_properties['component_id'] = component_info.component_id
     tf.logging.info('Resolved last blessed model {}'.format(
         exec_properties['blessed_model']))
     return exec_properties

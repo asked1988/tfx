@@ -19,19 +19,19 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tfx.components.statistics_gen import component
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
 
-  def test_construct(self):
-    train_examples = types.TfxArtifact(type_name='ExamplesPath', split='train')
-    eval_examples = types.TfxArtifact(type_name='ExamplesPath', split='eval')
+  def testConstruct(self):
+    train_examples = standard_artifacts.Examples(split='train')
+    eval_examples = standard_artifacts.Examples(split='eval')
     statistics_gen = component.StatisticsGen(
-        input_data=channel.as_channel([train_examples, eval_examples]))
+        input_data=channel_utils.as_channel([train_examples, eval_examples]))
     self.assertEqual('ExampleStatisticsPath',
-                     statistics_gen.outputs.output.type_name)
+                     statistics_gen.outputs['output'].type_name)
 
 
 if __name__ == '__main__':

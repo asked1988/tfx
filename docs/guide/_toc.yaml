@@ -22,11 +22,15 @@ toc:
   path: /tfx/guide/modelval
 - title: "Pusher"
   path: /tfx/guide/pusher
+- title: "Advanced: Custom Components"
+  path: /tfx/guide/custom_component
 
 - heading: "Orchestrators"
   style: divider
 - title: "Apache Airflow"
-  path: /tfx/guide/orchestra
+  path: /tfx/guide/airflow
+- title: "Apache Beam"
+  path: /tfx/guide/beam_orchestrator
 - title: "Kubeflow Pipelines"
   path: /tfx/guide/kubeflow
 

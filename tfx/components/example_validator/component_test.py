@@ -19,21 +19,20 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tfx.components.example_validator import component
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ExampleValidatorTest(tf.test.TestCase):
 
-  def test_construct(self):
+  def testConstruct(self):
     example_validator = component.ExampleValidator(
-        stats=channel.as_channel(
-            [types.TfxArtifact(type_name='ExampleStatisticsPath',
-                               split='eval')]),
-        schema=channel.as_channel([types.TfxArtifact(type_name='SchemaPath')]),
+        stats=channel_utils.as_channel(
+            [standard_artifacts.ExampleStatistics(split='eval')]),
+        schema=channel_utils.as_channel([standard_artifacts.Schema()]),
     )
     self.assertEqual('ExampleValidationPath',
-                     example_validator.outputs.output.type_name)
+                     example_validator.outputs['output'].type_name)
 
 
 if __name__ == '__main__':

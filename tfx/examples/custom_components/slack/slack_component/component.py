@@ -24,28 +24,28 @@ from slack_component import executor
 
 from typing import Optional, Text
 
+from tfx import types
 from tfx.components.base import base_component
-from tfx.components.base.base_component import ChannelParameter
-from tfx.components.base.base_component import ExecutionParameter
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.components.base import executor_spec
+from tfx.types import standard_artifacts
+from tfx.types.component_spec import ChannelParameter
+from tfx.types.component_spec import ExecutionParameter
 
 
-class SlackComponentSpec(base_component.ComponentSpec):
+class SlackComponentSpec(types.ComponentSpec):
   """ComponentSpec for Custom TFX Slack Component."""
 
-  COMPONENT_NAME = 'SlackComponent'
   PARAMETERS = {
       'slack_token': ExecutionParameter(type=Text),
-      'channel_id': ExecutionParameter(type=Text),
+      'slack_channel_id': ExecutionParameter(type=Text),
       'timeout_sec': ExecutionParameter(type=int),
   }
   INPUTS = {
-      'model_export': ChannelParameter(type_name='ModelExportPath'),
-      'model_blessing': ChannelParameter(type_name='ModelBlessingPath'),
+      'model_export': ChannelParameter(type=standard_artifacts.Model),
+      'model_blessing': ChannelParameter(type=standard_artifacts.ModelBlessing),
   }
   OUTPUTS = {
-      'slack_blessing': ChannelParameter(type_name='ModelBlessingPath'),
+      'slack_blessing': ChannelParameter(type=standard_artifacts.ModelBlessing),
   }
 
 
@@ -60,19 +60,36 @@ class SlackComponent(base_component.BaseComponent):
       started by SlackComponent with 'lgtm' or 'approve'.
     * To reject the model, a user need to reply the thread sent out by the bot
       started by SlackComponent with 'decline' or 'reject'.
+
+  If the model is approved, an artifact will be created in ML metadata. It will
+  be materialized as a file named 'BLESSED' in the directory specified by the
+  URI of 'slack_blessing' artifact.
+  If the model is rejected, an artifact will be created in ML metadata. It will
+  be materialized as a file named 'NOT_BLESSED' in the directory specified by
+  the URI of 'slack_blessing' channel.
+  If no message indicating approve or reject was is received within given within
+  timeout_sec, component will error out. This ensures that model will not be
+  pushed and the validation is still retry-able.
+
+  The output artifact might contain the following custom properties:
+    - blessed: integer value indicating whether the model is blessed
+    - slack_decision_maker: the user id that made the decision.
+    - slack_decision_message: the message of the decision
+    - slack_decision_channel: the slack channel the decision is made on
+    - slack_decision_thread: the slack thread the decision is made on
   """
 
   SPEC_CLASS = SlackComponentSpec
-  EXECUTOR_CLASS = executor.Executor
+  EXECUTOR_SPEC = executor_spec.ExecutorClassSpec(executor.Executor)
 
   def __init__(self,
-               model_export: channel.Channel,
-               model_blessing: channel.Channel,
+               model_export: types.Channel,
+               model_blessing: types.Channel,
                slack_token: Text,
-               channel_id: Text,
+               slack_channel_id: Text,
                timeout_sec: int,
-               slack_blessing: Optional[channel.Channel] = None,
-               name: Optional[Text] = None):
+               slack_blessing: Optional[types.Channel] = None,
+               instance_name: Optional[Text] = None):
     """Construct a SlackComponent.
 
     Args:
@@ -81,21 +98,21 @@ class SlackComponent(base_component.BaseComponent):
       model_blessing: A Channel of 'ModelBlessingPath' type, usually produced by
         ModelValidator component.
       slack_token: A token used for setting up connection with Slack server.
-      channel_id: Slack channel id to communicate on.
+      slack_channel_id: Slack channel id to communicate on.
       timeout_sec: Seconds to wait for response before default to reject.
       slack_blessing: Optional output channel of 'ModelBlessingPath' with result
         of blessing; will be created for you if not specified.
-      name: Optional unique name. Necessary if multiple Pusher components are
-        declared in the same pipeline.
+      instance_name: Optional unique instance name. Necessary if multiple Pusher
+        components are declared in the same pipeline.
     """
-    slack_blessing = slack_blessing or channel.Channel(
-        type_name='ModelBlessingPath',
-        artifacts=[types.TfxArtifact('ModelBlessingPath')])
+    slack_blessing = slack_blessing or types.Channel(
+        type=standard_artifacts.ModelBlessing,
+        artifacts=[standard_artifacts.ModelBlessing()])
     spec = SlackComponentSpec(
         slack_token=slack_token,
-        channel_id=channel_id,
+        slack_channel_id=slack_channel_id,
         timeout_sec=timeout_sec,
         model_export=model_export,
         model_blessing=model_blessing,
         slack_blessing=slack_blessing)
-    super(SlackComponent, self).__init__(spec=spec, name=name)
+    super(SlackComponent, self).__init__(spec=spec, instance_name=instance_name)

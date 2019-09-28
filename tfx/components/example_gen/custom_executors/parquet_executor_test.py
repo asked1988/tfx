@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for tfx.components.example_gen.custom_executos.parquet_executor."""
+"""Tests for tfx.components.example_gen.custom_executors.parquet_executor."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,7 @@ from apache_beam.testing import util
 import tensorflow as tf
 from tfx.components.example_gen.custom_executors import parquet_executor
 from tfx.proto import example_gen_pb2
-from tfx.utils import types
+from tfx.types import standard_artifacts
 from google.protobuf import json_format
 
 
@@ -34,87 +34,9 @@ class ExecutorTest(tf.test.TestCase):
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'testdata')
 
     # Create input dict.
-    input_base = types.TfxArtifact(type_name='ExternalPath')
+    input_base = standard_artifacts.ExternalArtifact()
     input_base.uri = os.path.join(input_data_dir, 'external')
     self._input_dict = {'input_base': [input_base]}
-
-  def testDictToExample(self):
-    parquet_dict = {
-        'int': 10,
-        'float': 5.0,
-        'str': 'abc',
-        'int_list': [1, 2],
-        'float_list': [3.0],
-        'str_list': ['ab', 'cd'],
-        'none': None,
-        'empty_list': [],
-    }
-    example = parquet_executor._dict_to_example(parquet_dict)
-    self.assertProtoEquals(
-        """
-        features {
-          feature {
-            key: "empty_list"
-            value {
-            }
-          }
-          feature {
-            key: "float"
-            value {
-              float_list {
-                value: 5.0
-              }
-            }
-          }
-          feature {
-            key: "float_list"
-            value {
-              float_list {
-                value: 3.0
-              }
-            }
-          }
-          feature {
-            key: "int"
-            value {
-              int64_list {
-                value: 10
-              }
-            }
-          }
-          feature {
-            key: "int_list"
-            value {
-              int64_list {
-                value: 1
-                value: 2
-              }
-            }
-          }
-          feature {
-            key: "none"
-            value {
-            }
-          }
-          feature {
-            key: "str"
-            value {
-              bytes_list {
-                value: "abc"
-              }
-            }
-          }
-          feature {
-            key: "str_list"
-            value {
-              bytes_list {
-                value: "ab"
-                value: "cd"
-              }
-            }
-          }
-        }
-        """, example)
 
   def testParquetToExample(self):
     with beam.Pipeline() as pipeline:
@@ -128,7 +50,7 @@ class ExecutorTest(tf.test.TestCase):
       def check_result(got):
         # We use Python assertion here to avoid Beam serialization error in
         # pickling tf.test.TestCase.
-        assert (15000 == len(got)), 'Unexpected example count'
+        assert (10000 == len(got)), 'Unexpected example count'
         assert (18 == len(got[0].features.feature)), 'Example not match'
 
       util.assert_that(examples, check_result)
@@ -139,9 +61,9 @@ class ExecutorTest(tf.test.TestCase):
         self._testMethodName)
 
     # Create output dict.
-    train_examples = types.TfxArtifact(type_name='ExamplesPath', split='train')
+    train_examples = standard_artifacts.Examples(split='train')
     train_examples.uri = os.path.join(output_data_dir, 'train')
-    eval_examples = types.TfxArtifact(type_name='ExamplesPath', split='eval')
+    eval_examples = standard_artifacts.Examples(split='eval')
     eval_examples.uri = os.path.join(output_data_dir, 'eval')
     output_dict = {'examples': [train_examples, eval_examples]}
 

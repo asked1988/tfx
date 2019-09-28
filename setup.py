@@ -63,9 +63,14 @@ def generate_proto(source):
       sys.exit(-1)
 
 
-for proto_file in glob.glob('tfx/proto/*.proto'):
-  generate_proto(proto_file)
+_PROTO_FILE_PATTERNS = [
+    'tfx/proto/*.proto',
+    'tfx/orchestration/kubeflow/proto/*.proto',
+]
 
+for file_pattern in _PROTO_FILE_PATTERNS:
+  for proto_file in glob.glob(file_pattern):
+    generate_proto(proto_file)
 
 # Get various package dependencies list.
 with open('tfx/dependencies.py') as fp:
@@ -75,7 +80,6 @@ _make_required_install_packages = globals_dict['make_required_install_packages']
 _make_required_test_packages = globals_dict['make_required_test_packages']
 _make_extra_packages_docker_image = globals_dict[
     'make_extra_packages_docker_image']
-
 
 # Get version from version module.
 with open('tfx/version.py') as fp:
@@ -112,8 +116,8 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.5',
-        # 'Programming Language :: Python :: 3.6',
-        # 'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
         'Topic :: Scientific/Engineering :: Mathematics',
@@ -137,4 +141,13 @@ setup(
     keywords='tensorflow tfx',
     url='https://www.tensorflow.org/tfx',
     download_url='https://github.com/tensorflow/tfx/tags',
-    requires=[])
+    requires=[],
+    # Below console_scripts, each line identifies one console script. The first
+    # part before the equals sign (=) which is 'tfx', is the name of the script
+    # that should be generated, the second part is the import path followed by a
+    # colon (:) with the Click command group. After installation, the user can
+    # invoke the CLI using "tfx <command_group> <sub_command> <flags>"
+    entry_points="""
+        [console_scripts]
+        tfx=tfx.tools.cli.cli_main:cli_group
+    """)

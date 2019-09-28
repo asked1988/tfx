@@ -18,11 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tfx.components.base import executor_spec
 from tfx.components.pusher import component
 from tfx.components.pusher import executor
 from tfx.proto import pusher_pb2
-from tfx.utils import channel
-from tfx.utils import types
+from tfx.types import channel_utils
+from tfx.types import standard_artifacts
 
 
 class ComponentTest(tf.test.TestCase):
@@ -32,34 +33,35 @@ class ComponentTest(tf.test.TestCase):
     pass
 
   def setUp(self):
-    self.model_export = channel.as_channel(
-        [types.TfxArtifact(type_name='ModelExportPath')])
-    self.model_blessing = channel.as_channel(
-        [types.TfxArtifact(type_name='ModelBlessingPath')])
+    super(ComponentTest, self).setUp()
+    self.model_export = channel_utils.as_channel([standard_artifacts.Model()])
+    self.model_blessing = channel_utils.as_channel(
+        [standard_artifacts.ModelBlessing()])
 
-  def test_construct(self):
+  def testConstruct(self):
     pusher = component.Pusher(
         model_export=self.model_export,
         model_blessing=self.model_blessing,
         push_destination=pusher_pb2.PushDestination(
             filesystem=pusher_pb2.PushDestination.Filesystem(
                 base_directory='push_destination')))
-    self.assertEqual('ModelPushPath', pusher.outputs.model_push.type_name)
+    self.assertEqual('ModelPushPath', pusher.outputs['model_push'].type_name)
 
-  def test_construct_no_destination(self):
+  def testConstructNoDestination(self):
     with self.assertRaises(ValueError):
       _ = component.Pusher(
           model_export=self.model_export,
           model_blessing=self.model_blessing,
       )
 
-  def test_construct_no_destination_custom_executor(self):
+  def testConstructNoDestinationCustomExecutor(self):
     pusher = component.Pusher(
         model_export=self.model_export,
         model_blessing=self.model_blessing,
-        executor_class=self._MyCustomPusherExecutor,
+        custom_executor_spec=executor_spec.ExecutorClassSpec(
+            self._MyCustomPusherExecutor),
     )
-    self.assertEqual('ModelPushPath', pusher.outputs.model_push.type_name)
+    self.assertEqual('ModelPushPath', pusher.outputs['model_push'].type_name)
 
 
 if __name__ == '__main__':
